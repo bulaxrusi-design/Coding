@@ -3,6 +3,8 @@ name: Build TTC Bridge APK
 on:
   push:
     branches: ["ttc-bridge-v2"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
