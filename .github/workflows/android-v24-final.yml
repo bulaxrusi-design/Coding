@@ -5,6 +5,8 @@ on:
     branches: ["device-lab-v2.4-final"]
     paths-ignore:
       - "dist/**"
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
