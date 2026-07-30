@@ -10,6 +10,7 @@ import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.util.concurrent.ConcurrentHashMap
 
 class GitHubClient(
     private val owner: String,
@@ -18,6 +19,8 @@ class GitHubClient(
     private val token: String
 ) {
     data class RemoteFile(val bytes: ByteArray, val sha: String)
+
+    private val shaCache = ConcurrentHashMap<String, String>()
 
     suspend fun getFile(path: String): RemoteFile? = withContext(Dispatchers.IO) {
         val url = URL("https://api.github.com/repos/${encode(owner)}/${encode(repo)}/contents/${encodePath(path)}?ref=${encode(branch)}")
@@ -28,7 +31,9 @@ class GitHubClient(
         if (code !in 200..299) error("GitHub GET $path failed: $code ${body.take(500)}")
         val json = JSONObject(body)
         val content = json.getString("content").replace("\n", "")
-        RemoteFile(Base64.decode(content, Base64.DEFAULT), json.getString("sha"))
+        val remote = RemoteFile(Base64.decode(content, Base64.DEFAULT), json.getString("sha"))
+        shaCache[path] = remote.sha
+        remote
     }
 
     suspend fun getText(path: String): Pair<String, String>? {
@@ -42,14 +47,14 @@ class GitHubClient(
             val result = putBytesOnce(path, bytes, message)
             if (result.first != null) return result.first!!
             lastFailure = result.second
-            delay(250L * (attempt + 1))
+            delay(200L * (attempt + 1))
         }
         error(lastFailure ?: "GitHub PUT $path failed after retries")
     }
 
     private suspend fun putBytesOnce(path: String, bytes: ByteArray, message: String): Pair<String?, String?> =
         withContext(Dispatchers.IO) {
-            val currentSha = getFile(path)?.sha
+            val currentSha = shaCache[path] ?: getFile(path)?.sha
             val payload = JSONObject()
                 .put("message", message)
                 .put("content", Base64.encodeToString(bytes, Base64.NO_WRAP))
@@ -63,9 +68,12 @@ class GitHubClient(
             val code = connection.responseCode
             val body = readBody(connection)
             if (code in 200..299) {
-                return@withContext JSONObject(body).getJSONObject("content").getString("sha") to null
+                val newSha = JSONObject(body).getJSONObject("content").getString("sha")
+                shaCache[path] = newSha
+                return@withContext newSha to null
             }
             if (code == 409 || code == 422) {
+                shaCache.remove(path)
                 return@withContext null to "GitHub PUT $path conflict: $code ${body.take(500)}"
             }
             error("GitHub PUT $path failed: $code ${body.take(500)}")
@@ -77,8 +85,8 @@ class GitHubClient(
     private fun open(url: URL, method: String): HttpURLConnection =
         (url.openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 20_000
-            readTimeout = 30_000
+            connectTimeout = 15_000
+            readTimeout = 25_000
             setRequestProperty("Authorization", "Bearer $token")
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
