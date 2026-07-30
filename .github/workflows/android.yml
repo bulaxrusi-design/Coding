@@ -5,8 +5,11 @@ on:
     branches: ["device-lab-v2.2-build"]
     paths-ignore:
       - "dist/**"
+      - "snapshot-requests/**"
   pull_request:
     branches: ["main"]
+    paths-ignore:
+      - "snapshot-requests/**"
   workflow_dispatch:
 
 permissions:
