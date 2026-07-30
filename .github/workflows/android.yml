@@ -52,12 +52,13 @@ jobs:
           mkdir -p dist
           cp device_lab_v2/app/build/outputs/apk/debug/app-debug.apk dist/ChatGPT-Device-Lab-v2.1-debug.apk
           sha256sum dist/ChatGPT-Device-Lab-v2.1-debug.apk | tee dist/ChatGPT-Device-Lab-v2.1-debug.apk.sha256
+          printf '%s\n' "$GITHUB_RUN_ID" > dist/latest_v21_run_id.txt
       - name: Publish APK on branch
         if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist/ChatGPT-Device-Lab-v2.1-debug.apk dist/ChatGPT-Device-Lab-v2.1-debug.apk.sha256
+          git add dist/ChatGPT-Device-Lab-v2.1-debug.apk dist/ChatGPT-Device-Lab-v2.1-debug.apk.sha256 dist/latest_v21_run_id.txt
           if git diff --cached --quiet; then
             echo "No APK changes"
           else
