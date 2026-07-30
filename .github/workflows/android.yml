@@ -1,8 +1,8 @@
-name: Build TTC Bridge v3 APK
+name: Build ChatGPT Device Lab v2 APK
 
 on:
   push:
-    branches: ["ttc-bridge-v3"]
+    branches: ["device-lab-v2-build"]
     paths-ignore:
       - "dist/**"
   pull_request:
@@ -27,33 +27,29 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
-      - name: Reconstruct and unpack source
-        run: |
-          cat source_chunks/*.b64 | base64 --decode > ttc_bridge_v3_project.zip
-          unzip -q ttc_bridge_v3_project.zip -d build-src
       - name: Build debug APK
-        working-directory: build-src/ttc_bridge_v3
+        working-directory: device_lab_v2
         run: gradle --no-daemon assembleDebug
       - name: Stage APK
         run: |
           mkdir -p dist
-          cp build-src/ttc_bridge_v3/app/build/outputs/apk/debug/app-debug.apk dist/TTC-Bridge-v3-debug.apk
-          sha256sum dist/TTC-Bridge-v3-debug.apk | tee dist/TTC-Bridge-v3-debug.apk.sha256
+          cp device_lab_v2/app/build/outputs/apk/debug/app-debug.apk dist/ChatGPT-Device-Lab-v2-debug.apk
+          sha256sum dist/ChatGPT-Device-Lab-v2-debug.apk | tee dist/ChatGPT-Device-Lab-v2-debug.apk.sha256
       - name: Publish APK on branch
         if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist/TTC-Bridge-v3-debug.apk dist/TTC-Bridge-v3-debug.apk.sha256
+          git add dist/ChatGPT-Device-Lab-v2-debug.apk dist/ChatGPT-Device-Lab-v2-debug.apk.sha256
           if git diff --cached --quiet; then
             echo "No APK changes"
           else
-            git commit -m "Build TTC Bridge v3 APK [skip ci]"
+            git commit -m "Build ChatGPT Device Lab v2 APK [skip ci]"
             git push
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: ttc-bridge-v3-debug-apk
+          name: chatgpt-device-lab-v2-debug-apk
           path: |
-            dist/TTC-Bridge-v3-debug.apk
-            dist/TTC-Bridge-v3-debug.apk.sha256
+            dist/ChatGPT-Device-Lab-v2-debug.apk
+            dist/ChatGPT-Device-Lab-v2-debug.apk.sha256
