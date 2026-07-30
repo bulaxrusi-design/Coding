@@ -105,7 +105,7 @@ class BridgeService : Service() {
             sessionId = UUID.randomUUID().toString()
             prefs.currentSession = sessionId
             prefs.lastSequence = 0L
-            prefs.bridgeStatus = "Starting v2.4 Final • session ${sessionId.take(8)}"
+            prefs.bridgeStatus = "Starting v2.4.1 • session ${sessionId.take(8)}"
             startProjection(resultCode, resultData)
             startBridgeLoops()
         }
@@ -199,16 +199,29 @@ class BridgeService : Service() {
             val stateClient = GitHubClient(prefs.owner, prefs.repo, STATE_BRANCH, token)
             val frameClient = GitHubClient(prefs.owner, prefs.repo, FRAME_BRANCH, token)
 
+            val initialResolution = ForegroundResolver.resolve(this@BridgeService)
             try {
-                val resolution = ForegroundResolver.resolve(this@BridgeService)
-                publishFrame(frameClient, resolution, force = true)
-                publishStatus(stateClient, resolution, force = true)
-                prefs.bridgeStatus = "Connected v2.4 Final • session ${sessionId.take(8)}"
-                updateNotification("Connected • OCR and gestures ready")
+                // The lightweight state channel is the connection source of truth. Publish it first
+                // so a temporary frame/OCR failure cannot make a healthy bridge look disconnected.
+                publishStatus(stateClient, initialResolution, force = true)
             } catch (error: Throwable) {
                 stopBridge("Connection failed: ${error.message}")
                 return@launch
             }
+
+            runCatching { publishFrame(frameClient, initialResolution, force = true) }
+                .onFailure { error ->
+                    lastCaptureOk = false
+                    lastCaptureError = error.message ?: error.javaClass.simpleName
+                    lastError = "Frame channel: $lastCaptureError"
+                    runCatching { publishStatus(stateClient, initialResolution, force = true) }
+                }
+
+            prefs.bridgeStatus = "Connected v2.4.1 • session ${sessionId.take(8)}"
+            updateNotification(
+                if (lastCaptureError == null) "Connected • OCR and gestures ready"
+                else "Connected • frame retry active"
+            )
 
             launch {
                 while (isActive) {
@@ -241,19 +254,38 @@ class BridgeService : Service() {
             launch {
                 while (isActive) {
                     val cycleStarted = System.currentTimeMillis()
-                    try {
-                        val resolution = ForegroundResolver.resolve(this@BridgeService)
+                    val resolution = ForegroundResolver.resolve(this@BridgeService)
+                    val frameFailure = runCatching {
                         publishFrame(frameClient, resolution, force = false)
-                        publishStatus(stateClient, resolution, force = false)
+                    }.exceptionOrNull()
 
-                        val foreground = resolution.packageName ?: "unknown"
-                        updateNotification("Connected • $foreground • OCR $lastNumberCount numbers")
-                        prefs.bridgeStatus =
-                            "Connected v2.4 Final • $foreground • ${resolution.source} • session ${sessionId.take(8)}"
-                    } catch (error: Throwable) {
-                        lastError = error.message ?: error.javaClass.simpleName
-                        prefs.bridgeStatus = "Observation error • ${lastError?.take(100)}"
-                        updateNotification("Observation error: ${lastError?.take(65)}")
+                    if (frameFailure != null) {
+                        lastCaptureOk = false
+                        lastCaptureError = frameFailure.message ?: frameFailure.javaClass.simpleName
+                        lastError = "Frame channel: $lastCaptureError"
+                    } else if (lastError?.startsWith("Frame channel:") == true) {
+                        lastError = null
+                    }
+
+                    val statusFailure = runCatching {
+                        publishStatus(stateClient, resolution, force = frameFailure != null)
+                    }.exceptionOrNull()
+
+                    val foreground = resolution.packageName ?: "unknown"
+                    if (statusFailure == null) {
+                        prefs.bridgeStatus = if (frameFailure == null) {
+                            "Connected v2.4.1 • $foreground • ${resolution.source} • session ${sessionId.take(8)}"
+                        } else {
+                            "Connected v2.4.1 • state OK • frame retry • ${lastCaptureError?.take(70)}"
+                        }
+                        updateNotification(
+                            if (frameFailure == null) "Connected • $foreground • OCR $lastNumberCount numbers"
+                            else "Connected • frame retry active"
+                        )
+                    } else {
+                        lastError = statusFailure.message ?: statusFailure.javaClass.simpleName
+                        prefs.bridgeStatus = "State channel error • ${lastError?.take(100)}"
+                        updateNotification("State error: ${lastError?.take(65)}")
                     }
                     val elapsed = System.currentTimeMillis() - cycleStarted
                     delay((BACKGROUND_FRAME_POLL_MS - elapsed).coerceAtLeast(MIN_LOOP_DELAY_MS))
@@ -792,7 +824,7 @@ class BridgeService : Service() {
 
     private fun notification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_menu_view)
-        .setContentTitle("ChatGPT Device Lab v2.4 Final active")
+        .setContentTitle("ChatGPT Device Lab v2.4.1 active")
         .setContentText(text)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
