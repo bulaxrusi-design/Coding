@@ -27,7 +27,7 @@ jobs:
           gradle-version: "8.10.2"
       - name: Reconstruct and unpack source
         run: |
-          cat source_chunks/*.b64 | base64 --decode > device_lab_v21_project.zip
+          cat source_chunks/part-00.b64 v21_chunks/part-*.b64 | base64 --decode > device_lab_v21_project.zip
           unzip -q device_lab_v21_project.zip -d build-src
       - name: Build debug APK
         working-directory: build-src/chatgpt_device_lab_v2
