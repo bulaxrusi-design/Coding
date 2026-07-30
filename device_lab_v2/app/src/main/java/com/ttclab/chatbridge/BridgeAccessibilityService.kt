@@ -1,6 +1,7 @@
 package com.ttclab.chatbridge
 
 import android.accessibilityservice.AccessibilityService
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.os.Handler
@@ -13,44 +14,51 @@ import kotlin.coroutines.resume
 class BridgeAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
-        refreshForegroundPackage()
+        val updatedInfo = serviceInfo
+        updatedInfo.flags = updatedInfo.flags or
+            AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+            AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+            AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+        serviceInfo = updatedInfo
+        refreshWindowPackage()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val eventPackage = event?.packageName?.toString()?.takeIf { it.isNotBlank() }
         if (eventPackage != null) {
-            foregroundPackage = eventPackage
-            lastForegroundUpdateMs = System.currentTimeMillis()
-        } else {
-            refreshForegroundPackage()
+            lastEventPackage = eventPackage
+            lastEventType = event.eventType
+            lastEventAtMs = System.currentTimeMillis()
         }
+        refreshWindowPackage()
     }
 
-    /**
-     * Accessibility events are sometimes sparse on older Samsung builds. Resolve the
-     * current package from the active/focused accessibility window as a fallback.
-     */
-    fun refreshForegroundPackage(): String? {
-        val candidates = runCatching {
+    fun refreshWindowPackage(): String? {
+        val now = System.currentTimeMillis()
+        val activeWindowPackage = runCatching {
             windows.orEmpty()
                 .sortedWith(
                     compareByDescending<AccessibilityWindowInfo> { it.isActive }
                         .thenByDescending { it.isFocused }
                         .thenByDescending { it.layer }
                 )
-                .mapNotNull { window ->
-                    runCatching { window.root?.packageName?.toString() }.getOrNull()
+                .firstNotNullOfOrNull { window ->
+                    runCatching { window.root?.packageName?.toString() }
+                        .getOrNull()
+                        ?.takeIf { it.isNotBlank() }
                 }
-                .filter { it.isNotBlank() }
-        }.getOrDefault(emptyList())
+        }.getOrNull()
 
-        val rootPackage = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
-        val resolved = candidates.firstOrNull() ?: rootPackage
+        val rootPackage = runCatching {
+            rootInActiveWindow?.packageName?.toString()?.takeIf { it.isNotBlank() }
+        }.getOrNull()
+
+        val resolved = activeWindowPackage ?: rootPackage
         if (!resolved.isNullOrBlank()) {
-            foregroundPackage = resolved
-            lastForegroundUpdateMs = System.currentTimeMillis()
+            lastWindowPackage = resolved
+            lastWindowAtMs = now
         }
-        return foregroundPackage
+        return resolved
     }
 
     override fun onInterrupt() = Unit
@@ -98,10 +106,26 @@ class BridgeAccessibilityService : AccessibilityService() {
 
     companion object {
         @Volatile var instance: BridgeAccessibilityService? = null
-        @Volatile var foregroundPackage: String? = null
-        @Volatile var lastForegroundUpdateMs: Long = 0L
+            private set
+        @Volatile private var lastEventPackage: String? = null
+        @Volatile private var lastEventAtMs: Long = 0L
+        @Volatile private var lastEventType: Int = 0
+        @Volatile private var lastWindowPackage: String? = null
+        @Volatile private var lastWindowAtMs: Long = 0L
 
-        fun resolveForegroundPackage(): String? =
-            instance?.refreshForegroundPackage() ?: foregroundPackage
+        fun resolveForegroundSnapshot(): AccessibilityForegroundSnapshot? {
+            instance?.refreshWindowPackage()
+            val window = lastWindowPackage?.let {
+                AccessibilityForegroundSnapshot(it, "accessibility_window", lastWindowAtMs)
+            }
+            val event = lastEventPackage?.let {
+                AccessibilityForegroundSnapshot(
+                    it,
+                    "accessibility_event_${lastEventType}",
+                    lastEventAtMs
+                )
+            }
+            return listOfNotNull(window, event).maxByOrNull { it.updatedAtMs }
+        }
     }
 }
