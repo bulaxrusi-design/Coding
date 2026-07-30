@@ -5,6 +5,13 @@ on:
     branches: ["ttc-bridge-v3"]
     paths:
       - "BUILD_TRIGGER_V21.md"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/android.yml"
+      - "source_chunks/**"
+      - "v21_chunks/**"
+      - "BUILD_TRIGGER_V21.md"
   workflow_dispatch:
 
 permissions:
@@ -38,6 +45,7 @@ jobs:
           cp build-src/chatgpt_device_lab_v2/app/build/outputs/apk/debug/app-debug.apk dist/ChatGPT-Device-Lab-v2.1-debug.apk
           sha256sum dist/ChatGPT-Device-Lab-v2.1-debug.apk | tee dist/ChatGPT-Device-Lab-v2.1-debug.apk.sha256
       - name: Publish APK on branch
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
