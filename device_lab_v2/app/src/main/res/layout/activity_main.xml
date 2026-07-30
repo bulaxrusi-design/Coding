@@ -36,7 +36,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Device Lab v2.2"
+            android:text="Device Lab v2.3"
             android:textColor="#FFFFFF"
             android:textSize="15sp"
             android:textStyle="bold"
@@ -101,7 +101,7 @@
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="ChatGPT Device Bridge v2.2"
+                    android:text="ChatGPT Device Bridge v2.3"
                     android:textSize="22sp"
                     android:textStyle="bold"
                     android:textColor="#212121" />
@@ -111,7 +111,7 @@
                     android:layout_height="wrap_content"
                     android:paddingTop="6dp"
                     android:paddingBottom="12dp"
-                    android:text="Explicit screen capture and gesture control for one allowlisted test app. Every start creates a new session ID, and the visible notification provides an immediate STOP control."
+                    android:text="Optimized command-first relay with separate control, state and frame branches. Readable frame JSON lets the authorized chat inspect the allowlisted game screen; every start creates a new session and the notification keeps an immediate STOP control visible."
                     android:textColor="#555555" />
 
                 <EditText
@@ -148,10 +148,11 @@
                     android:id="@+id/pollInput"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:hint="Polling interval, seconds"
+                    android:hint="Compatibility interval"
                     android:inputType="numberDecimal"
-                    android:text="3.0"
-                    android:singleLine="true" />
+                    android:text="1.1"
+                    android:singleLine="true"
+                    android:visibility="gone" />
 
                 <Button
                     android:id="@+id/saveButton"
@@ -181,7 +182,7 @@
                     android:id="@+id/startButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Start bridge and screen capture" />
+                    android:text="Start optimized bridge and screen capture" />
 
                 <Button
                     android:id="@+id/openGameButton"
@@ -214,7 +215,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:paddingTop="18dp"
-                    android:text="Safety: gestures work only while the exact allowlisted package is in the foreground. Banking, wallet, billing, Play Store and authenticator-like packages are blocked. A permanent notification and STOP button remain visible. No shell, contacts, SMS, clipboard, location or unrestricted file-system access is included."
+                    android:text="Safety: gestures and readable frames work only while the exact allowlisted package is in the foreground. Banking, wallet, billing, Play Store and authenticator-like packages remain blocked. A permanent notification and STOP button remain visible. No shell, contacts, SMS, clipboard, location or unrestricted file-system access is included."
                     android:textColor="#666666" />
             </LinearLayout>
         </ScrollView>
