@@ -29,8 +29,18 @@ jobs:
           gradle-version: "8.10.2"
       - name: Reconstruct source archive
         run: |
-          cat source_chunks_v2_fixed/*.b64 | base64 --decode > chatgpt_device_lab_v2_project.zip
-          echo "b4c66d81d396029886b394bd8a822198bc5470d70f346407c8efd6c01242c698  chatgpt_device_lab_v2_project.zip" | sha256sum -c -
+          cat \
+            source_chunks_v2_fixed/part-00.b64 \
+            source_chunks_v2_fixed/part-01.b64 \
+            source_chunks_v2_fixed/part-02.b64 \
+            source_chunks_v2_fixed/part-03.b64 \
+            source_tail_v2/part-00.b64 \
+            source_tail_v2/part-01.b64 \
+            source_tail_v2/part-02.b64 \
+            source_tail_v2/part-03.b64 \
+            source_tail_v2/part-04.b64 \
+            | base64 --decode > chatgpt_device_lab_v2_project.zip
+          echo "325156d0a95d763a952ce562b69a930c5c65dc3bd48cd032248ab0043e8093ab  chatgpt_device_lab_v2_project.zip" | sha256sum -c -
           unzip -q chatgpt_device_lab_v2_project.zip -d build-src
       - name: Build debug APK
         working-directory: build-src/chatgpt_device_lab_v2
