@@ -6,16 +6,51 @@ import android.graphics.Path
 import android.os.Handler
 import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityWindowInfo
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 class BridgeAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
+        refreshForegroundPackage()
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        event?.packageName?.toString()?.let { foregroundPackage = it }
+        val eventPackage = event?.packageName?.toString()?.takeIf { it.isNotBlank() }
+        if (eventPackage != null) {
+            foregroundPackage = eventPackage
+            lastForegroundUpdateMs = System.currentTimeMillis()
+        } else {
+            refreshForegroundPackage()
+        }
+    }
+
+    /**
+     * Accessibility events are sometimes sparse on older Samsung builds. Resolve the
+     * current package from the active/focused accessibility window as a fallback.
+     */
+    fun refreshForegroundPackage(): String? {
+        val candidates = runCatching {
+            windows.orEmpty()
+                .sortedWith(
+                    compareByDescending<AccessibilityWindowInfo> { it.isActive }
+                        .thenByDescending { it.isFocused }
+                        .thenByDescending { it.layer }
+                )
+                .mapNotNull { window ->
+                    runCatching { window.root?.packageName?.toString() }.getOrNull()
+                }
+                .filter { it.isNotBlank() }
+        }.getOrDefault(emptyList())
+
+        val rootPackage = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+        val resolved = candidates.firstOrNull() ?: rootPackage
+        if (!resolved.isNullOrBlank()) {
+            foregroundPackage = resolved
+            lastForegroundUpdateMs = System.currentTimeMillis()
+        }
+        return foregroundPackage
     }
 
     override fun onInterrupt() = Unit
@@ -51,6 +86,7 @@ class BridgeAccessibilityService : AccessibilityService() {
                     override fun onCompleted(gestureDescription: GestureDescription?) {
                         if (continuation.isActive) continuation.resume(true)
                     }
+
                     override fun onCancelled(gestureDescription: GestureDescription?) {
                         if (continuation.isActive) continuation.resume(false)
                     }
@@ -63,5 +99,9 @@ class BridgeAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: BridgeAccessibilityService? = null
         @Volatile var foregroundPackage: String? = null
+        @Volatile var lastForegroundUpdateMs: Long = 0L
+
+        fun resolveForegroundPackage(): String? =
+            instance?.refreshForegroundPackage() ?: foregroundPackage
     }
 }
