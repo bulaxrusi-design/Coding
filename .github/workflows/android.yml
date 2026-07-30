@@ -5,6 +5,8 @@ on:
     branches: ["chatgpt-shell-v1"]
     paths-ignore:
       - "dist/**"
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -38,6 +40,7 @@ jobs:
           cp build-src/chatgpt_shell_v1/app/build/outputs/apk/debug/app-debug.apk dist/ChatGPT-Shell-v1-debug.apk
           sha256sum dist/ChatGPT-Shell-v1-debug.apk | tee dist/ChatGPT-Shell-v1-debug.apk.sha256
       - name: Publish APK on branch
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
