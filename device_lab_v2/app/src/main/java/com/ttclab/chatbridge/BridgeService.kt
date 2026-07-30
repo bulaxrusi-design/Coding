@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -51,6 +52,8 @@ class BridgeService : Service() {
     private var sessionId = ""
     private var lastError: String? = null
     private var lastAck: JSONObject? = null
+    private var lastCaptureOk = false
+    private var lastCaptureError: String? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -64,8 +67,6 @@ class BridgeService : Service() {
             return START_NOT_STICKY
         }
 
-        startForeground(NOTIFICATION_ID, notification("Starting bridge…"))
-
         val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, Activity.RESULT_CANCELED)
             ?: Activity.RESULT_CANCELED
         @Suppress("DEPRECATION")
@@ -74,6 +75,8 @@ class BridgeService : Service() {
             stopBridge("Screen-capture permission missing")
             return START_NOT_STICKY
         }
+
+        startForegroundCompat("Starting bridge…")
 
         if (projection == null) {
             sessionId = UUID.randomUUID().toString()
@@ -90,9 +93,13 @@ class BridgeService : Service() {
 
     override fun onDestroy() {
         pollJob?.cancel()
+        pendingCapture.getAndSet(null)?.cancel()
         virtualDisplay?.release()
+        virtualDisplay = null
         imageReader?.close()
+        imageReader = null
         projection?.stop()
+        projection = null
         scope.coroutineContext.cancelChildren()
         prefs.bridgeStatus = "Stopped"
         super.onDestroy()
@@ -130,9 +137,11 @@ class BridgeService : Service() {
                     val targetHeight = (screenHeight * (targetWidth.toDouble() / screenWidth)).toInt()
                     val scaled = Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true)
                     val output = ByteArrayOutputStream()
-                    scaled.compress(Bitmap.CompressFormat.JPEG, 60, output)
+                    scaled.compress(Bitmap.CompressFormat.JPEG, 65, output)
                     deferred.complete(output.toByteArray())
-                    bitmap.recycle(); cropped.recycle(); scaled.recycle()
+                    bitmap.recycle()
+                    cropped.recycle()
+                    scaled.recycle()
                 }
             } catch (error: Throwable) {
                 deferred?.completeExceptionally(error)
@@ -165,7 +174,7 @@ class BridgeService : Service() {
             try {
                 initializeSession(github)
                 prefs.bridgeStatus = "Connected • session ${sessionId.take(8)}"
-                updateNotification("Connected • waiting for target app")
+                updateNotification("Connected • waiting for allowlisted game")
             } catch (error: Throwable) {
                 stopBridge("Connection failed: ${error.message}")
                 return@launch
@@ -173,13 +182,15 @@ class BridgeService : Service() {
 
             while (isActive) {
                 try {
-                    publishFrameAndState(github)
+                    var resolution = ForegroundResolver.resolve(this@BridgeService)
+                    publishFrameAndState(github, resolution)
                     val pair = github.getText(CONTROL_PATH)
                     if (pair != null) handleCommand(github, JSONObject(pair.first))
                     lastError = null
-                    val foreground = BridgeAccessibilityService.foregroundPackage ?: "unknown"
-                    updateNotification("Connected • $foreground")
-                    prefs.bridgeStatus = "Connected • $foreground • session ${sessionId.take(8)}"
+                    resolution = ForegroundResolver.resolve(this@BridgeService)
+                    val foreground = resolution.packageName ?: "unknown"
+                    updateNotification("Connected • $foreground • ${resolution.source}")
+                    prefs.bridgeStatus = "Connected • $foreground • ${resolution.source} • session ${sessionId.take(8)}"
                 } catch (error: Throwable) {
                     lastError = error.message ?: error.javaClass.simpleName
                     prefs.bridgeStatus = "Error • ${lastError?.take(120)}"
@@ -195,9 +206,9 @@ class BridgeService : Service() {
             .put("seq", 0)
             .put("session_id", sessionId)
             .put("action", "observe")
-            .put("note", "New foreground session initialized by ChatGPT Device Lab v2")
+            .put("note", "New foreground session initialized by ChatGPT Device Lab v2.2")
         github.putText(CONTROL_PATH, initial.toString(2), "Initialize device session ${sessionId.take(8)}")
-        publishFrameAndState(github)
+        publishFrameAndState(github, ForegroundResolver.resolve(this))
     }
 
     private suspend fun handleCommand(github: GitHubClient, command: JSONObject) {
@@ -206,7 +217,9 @@ class BridgeService : Service() {
         if (commandSession != sessionId || seq <= prefs.lastSequence) return
 
         val expiresAt = command.optString("expires_at")
-        val expired = expiresAt.isNotBlank() && runCatching { Instant.parse(expiresAt).isBefore(Instant.now()) }.getOrDefault(true)
+        val expired = expiresAt.isNotBlank() && runCatching {
+            Instant.parse(expiresAt).isBefore(Instant.now())
+        }.getOrDefault(true)
         val ack = JSONObject().put("seq", seq).put("session_id", sessionId)
         try {
             if (expired) error("Command expired")
@@ -219,14 +232,17 @@ class BridgeService : Service() {
             prefs.lastSequence = seq
             lastAck = ack
             appendAudit(command, ack)
-            publishFrameAndState(github)
+            publishFrameAndState(github, ForegroundResolver.resolve(this))
         }
     }
 
     private suspend fun executeCommand(command: JSONObject) {
         when (val action = command.optString("action", "observe")) {
-            "observe" -> Unit
-            "launch" -> launchTarget(command.optString("package", prefs.allowedPackage))
+            "observe", "diagnose" -> Unit
+            "launch" -> {
+                launchTarget(command.optString("package", prefs.allowedPackage))
+                delay(900)
+            }
             "tap" -> executeTap(command)
             "swipe" -> executeSwipe(command)
             "back" -> executeBack()
@@ -239,7 +255,7 @@ class BridgeService : Service() {
 
     private fun launchTarget(packageName: String) {
         require(packageName == prefs.allowedPackage) { "Package is not allowlisted" }
-        require(!isSensitivePackage(packageName)) { "Sensitive package blocked" }
+        require(!CommandPolicy.isSensitivePackage(packageName)) { "Sensitive package blocked" }
         val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
             ?: error("Target app is not installed or not visible")
         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -248,9 +264,12 @@ class BridgeService : Service() {
 
     private fun requireSafeForeground(): BridgeAccessibilityService {
         val service = BridgeAccessibilityService.instance ?: error("Accessibility service is not enabled")
-        val foreground = BridgeAccessibilityService.foregroundPackage ?: error("Foreground package unknown")
-        require(foreground == prefs.allowedPackage) { "Gesture blocked outside allowlisted app: $foreground" }
-        require(!isSensitivePackage(foreground)) { "Sensitive surface blocked" }
+        val resolution = ForegroundResolver.resolve(this)
+        val foreground = resolution.packageName
+            ?: error("Foreground package unknown; enable Usage Access and Accessibility")
+        require(CommandPolicy.isAllowedForeground(foreground, prefs.allowedPackage)) {
+            "Gesture blocked outside allowlisted app: $foreground (${resolution.source})"
+        }
         return service
     }
 
@@ -259,8 +278,11 @@ class BridgeService : Service() {
         val normalized = command.optBoolean("normalized", false)
         var x = command.getDouble("x").toFloat()
         var y = command.getDouble("y").toFloat()
-        if (normalized) { x *= screenWidth; y *= screenHeight }
-        require(x in 0f..screenWidth.toFloat() && y in 0f..screenHeight.toFloat()) { "Tap out of bounds" }
+        if (normalized) {
+            x *= screenWidth
+            y *= screenHeight
+        }
+        require(CommandPolicy.isPointInside(x, y, screenWidth, screenHeight)) { "Tap out of bounds" }
         check(service.tap(x, y)) { "Tap gesture failed" }
     }
 
@@ -272,12 +294,17 @@ class BridgeService : Service() {
         var x2 = command.getDouble("x2").toFloat()
         var y2 = command.getDouble("y2").toFloat()
         if (normalized) {
-            x1 *= screenWidth; x2 *= screenWidth; y1 *= screenHeight; y2 *= screenHeight
+            x1 *= screenWidth
+            x2 *= screenWidth
+            y1 *= screenHeight
+            y2 *= screenHeight
         }
-        require(listOf(x1, x2).all { it in 0f..screenWidth.toFloat() } && listOf(y1, y2).all { it in 0f..screenHeight.toFloat() }) {
+        require(CommandPolicy.isSwipeInside(x1, y1, x2, y2, screenWidth, screenHeight)) {
             "Swipe out of bounds"
         }
-        check(service.swipe(x1, y1, x2, y2, command.optLong("duration_ms", 450))) { "Swipe gesture failed" }
+        check(service.swipe(x1, y1, x2, y2, command.optLong("duration_ms", 450))) {
+            "Swipe gesture failed"
+        }
     }
 
     private fun executeBack() {
@@ -298,39 +325,67 @@ class BridgeService : Service() {
         }
     }
 
-    private fun isSensitivePackage(packageName: String): Boolean {
-        val value = packageName.lowercase()
-        return listOf("bank", "wallet", "billing", "payment", "vending", "authenticator").any { it in value }
-    }
-
-    private suspend fun publishFrameAndState(github: GitHubClient) {
-        val foreground = BridgeAccessibilityService.foregroundPackage ?: "unknown"
-        val allowed = foreground == prefs.allowedPackage && !isSensitivePackage(foreground)
-        val bytes = if (allowed) captureJpeg() else privacyPlaceholder(foreground)
+    private suspend fun publishFrameAndState(
+        github: GitHubClient,
+        resolution: ForegroundResolution
+    ) {
+        val foreground = resolution.packageName ?: "unknown"
+        val allowed = CommandPolicy.isAllowedForeground(resolution.packageName, prefs.allowedPackage)
+        val captureResult = if (allowed) runCatching { captureJpeg() } else Result.success(
+            privacyPlaceholder(foreground, "Foreground is not the allowlisted game")
+        )
+        lastCaptureOk = allowed && captureResult.isSuccess
+        lastCaptureError = captureResult.exceptionOrNull()?.message
+        val bytes = captureResult.getOrElse {
+            privacyPlaceholder(foreground, "Screen capture failed: ${it.message ?: it.javaClass.simpleName}")
+        }
         github.putBytes(SCREENSHOT_PATH, bytes, "Update device frame ${sessionId.take(8)}")
+
+        val targetInstalled = packageManager.getLaunchIntentForPackage(prefs.allowedPackage) != null
+        val projectionActive = projection != null && virtualDisplay != null && imageReader != null
+        val gestureReady = allowed && resolution.accessibilityConnected
+        val selfTest = JSONObject()
+            .put("target_installed", targetInstalled)
+            .put("accessibility_connected", resolution.accessibilityConnected)
+            .put("usage_access_granted", resolution.usageAccessGranted)
+            .put("projection_active", projectionActive)
+            .put("foreground_known", resolution.packageName != null)
+            .put("target_in_foreground", allowed)
+            .put("capture_ok", lastCaptureOk)
+            .put("gesture_ready", gestureReady)
+
         val state = JSONObject()
-            .put("version", 2)
+            .put("protocol_version", 3)
+            .put("app_version", BuildConfig.VERSION_NAME)
             .put("session_id", sessionId)
             .put("running", true)
             .put("updated_at", Instant.now().toString())
             .put("foreground_package", foreground)
+            .put("foreground_source", resolution.source)
+            .put("foreground_age_ms", resolution.ageMs ?: JSONObject.NULL)
             .put("allowed_package", prefs.allowedPackage)
-            .put("screenshot_redacted", !allowed)
+            .put("screenshot_redacted", !allowed || !lastCaptureOk)
             .put("screen_width", screenWidth)
             .put("screen_height", screenHeight)
             .put("last_seq", prefs.lastSequence)
             .put("last_error", lastError ?: JSONObject.NULL)
+            .put("capture_error", lastCaptureError ?: JSONObject.NULL)
             .put("ack", lastAck ?: JSONObject.NULL)
+            .put("self_test", selfTest)
+            .put("capabilities", JSONArray(listOf("observe", "diagnose", "launch", "tap", "swipe", "back", "wait", "batch", "panic")))
         github.putText(STATUS_PATH, state.toString(2), "Update device status ${sessionId.take(8)}")
     }
 
     private suspend fun captureJpeg(): ByteArray {
+        check(projection != null && virtualDisplay != null && imageReader != null) {
+            "MediaProjection is not active"
+        }
         val deferred = CompletableDeferred<ByteArray>()
         pendingCapture.getAndSet(deferred)?.cancel()
-        return withTimeout(4_000) { deferred.await() }
+        return withTimeout(5_000) { deferred.await() }
     }
 
-    private fun privacyPlaceholder(foreground: String): ByteArray {
+    private fun privacyPlaceholder(foreground: String, reason: String): ByteArray {
         val width = 540
         val height = maxOf(720, (screenHeight * (width.toDouble() / maxOf(screenWidth, 1))).toInt())
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -342,8 +397,8 @@ class BridgeService : Service() {
         }
         canvas.drawText("Screenshot hidden", 32f, 80f, paint)
         paint.textSize = 18f
-        canvas.drawText("Foreground is not the allowlisted game.", 32f, 125f, paint)
-        canvas.drawText(foreground.take(48), 32f, 165f, paint)
+        canvas.drawText(reason.take(58), 32f, 125f, paint)
+        canvas.drawText(foreground.take(58), 32f, 165f, paint)
         val output = ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.JPEG, 80, output)
         bitmap.recycle()
@@ -365,13 +420,15 @@ class BridgeService : Service() {
 
     private fun notification(text: String) = NotificationCompat.Builder(this, CHANNEL_ID)
         .setSmallIcon(android.R.drawable.ic_menu_view)
-        .setContentTitle("ChatGPT Device Lab active")
+        .setContentTitle("ChatGPT Device Lab v2.2 active")
         .setContentText(text)
         .setOngoing(true)
         .setOnlyAlertOnce(true)
         .setContentIntent(
             PendingIntent.getActivity(
-                this, 0, Intent(this, MainActivity::class.java),
+                this,
+                0,
+                Intent(this, MainActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         )
@@ -379,11 +436,26 @@ class BridgeService : Service() {
             android.R.drawable.ic_delete,
             "STOP",
             PendingIntent.getService(
-                this, 1, Intent(this, BridgeService::class.java).setAction(ACTION_STOP),
+                this,
+                1,
+                Intent(this, BridgeService::class.java).setAction(ACTION_STOP),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
         )
         .build()
+
+    private fun startForegroundCompat(text: String) {
+        val notification = notification(text)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
 
     private fun updateNotification(text: String) {
         (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
@@ -392,8 +464,13 @@ class BridgeService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "ChatGPT Device Lab", NotificationManager.IMPORTANCE_LOW)
-            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "ChatGPT Device Lab",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            (getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager)
+                .createNotificationChannel(channel)
         }
     }
 
