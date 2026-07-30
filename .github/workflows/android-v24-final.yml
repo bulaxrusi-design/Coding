@@ -1,0 +1,88 @@
+name: Build ChatGPT Device Lab v2.4 Final APK
+
+on:
+  push:
+    branches: ["device-lab-v2.4-final"]
+    paths-ignore:
+      - "dist/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize v2.4 Final sources
+        run: python3 device_lab_v2/tools/apply_v24.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Verify final source features
+        run: |
+          grep -q 'versionCode = 6' device_lab_v2/app/build.gradle.kts
+          grep -q 'versionName = "2.4.0"' device_lab_v2/app/build.gradle.kts
+          grep -q 'com.google.mlkit:text-recognition:16.0.1' device_lab_v2/app/build.gradle.kts
+          grep -q 'private const val VISION_PATH = "state/vision.json"' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q 'jpeg_base64_chunks' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q '"tap_text"' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q 'snapshotWindowTree' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeAccessibilityService.kt
+          grep -q 'TextRecognition.getClient' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/ScreenAnalyzer.kt
+
+      - name: Run tests, lint and APK build
+        working-directory: device_lab_v2
+        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - name: Verify APK metadata
+        run: |
+          APK=device_lab_v2/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='6'" /tmp/badging.txt
+          grep -q "versionName='2.4.0'" /tmp/badging.txt
+          grep -q "application-label:'ChatGPT Device Lab v2.4 Final'" /tmp/badging.txt
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp device_lab_v2/app/build/outputs/apk/debug/app-debug.apk dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk
+          sha256sum dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk | tee dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk.sha256
+          printf '%s\n' "$GITHUB_RUN_ID" > dist/latest_v24_run_id.txt
+
+      - name: Publish APK on branch
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk.sha256 dist/latest_v24_run_id.txt
+          if git diff --cached --quiet; then
+            echo "No APK changes"
+          else
+            git commit -m "Build ChatGPT Device Lab v2.4 Final APK [skip ci]"
+            git push
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chatgpt-device-lab-v2.4-final-debug-apk
+          retention-days: 90
+          path: |
+            dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk
+            dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk.sha256
+            device_lab_v2/app/build/reports/lint-results-debug.html
+            device_lab_v2/app/build/reports/tests/testDebugUnitTest/
