@@ -2,7 +2,7 @@ name: Build ChatGPT Device Lab v2.1 APK
 
 on:
   push:
-    branches: ["device-lab-v2.1-build"]
+    branches: ["device-lab-v2-build", "device-lab-v2.1-build"]
     paths-ignore:
       - "dist/**"
   pull_request:
