@@ -32,8 +32,8 @@ jobs:
           payload = base64.b64decode(os.environ["V241_PATCH_GZ_B64"])
           Path("/tmp/v241.patch").write_bytes(gzip.decompress(payload))
           PY
-          git apply --check /tmp/v241.patch
-          git apply /tmp/v241.patch
+          git apply --check --exclude=device_lab_v2/app/src/main/java/com/ttclab/chatbridge/GitHubClient.kt /tmp/v241.patch
+          git apply --exclude=device_lab_v2/app/src/main/java/com/ttclab/chatbridge/GitHubClient.kt /tmp/v241.patch
 
       - uses: actions/setup-java@v4
         with:
