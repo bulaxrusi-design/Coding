@@ -1,0 +1,54 @@
+name: Build TTC Bridge v3 APK
+
+on:
+  push:
+    branches: ["ttc-bridge-v3"]
+    paths-ignore:
+      - "dist/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+      - name: Reconstruct and unpack source
+        run: |
+          cat source_chunks/*.b64 | base64 --decode > ttc_bridge_v3_project.zip
+          unzip -q ttc_bridge_v3_project.zip -d build-src
+      - name: Build debug APK
+        working-directory: build-src/ttc_bridge_v3
+        run: gradle --no-daemon assembleDebug
+      - name: Publish APK on branch
+        run: |
+          mkdir -p dist
+          cp build-src/ttc_bridge_v3/app/build/outputs/apk/debug/app-debug.apk dist/TTC-Bridge-v3-debug.apk
+          sha256sum dist/TTC-Bridge-v3-debug.apk | tee dist/TTC-Bridge-v3-debug.apk.sha256
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist/TTC-Bridge-v3-debug.apk dist/TTC-Bridge-v3-debug.apk.sha256
+          if git diff --cached --quiet; then
+            echo "No APK changes"
+          else
+            git commit -m "Build TTC Bridge v3 APK [skip ci]"
+            git push
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ttc-bridge-v3-debug-apk
+          path: |
+            dist/TTC-Bridge-v3-debug.apk
+            dist/TTC-Bridge-v3-debug.apk.sha256
