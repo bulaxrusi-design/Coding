@@ -1,0 +1,210 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#FFFFFF">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="6dp"
+        android:paddingEnd="4dp"
+        android:background="#202124">
+
+        <Button
+            android:id="@+id/chatTabButton"
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:text="Chat"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#202124" />
+
+        <Button
+            android:id="@+id/bridgeTabButton"
+            android:layout_width="wrap_content"
+            android:layout_height="42dp"
+            android:text="Bridge"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#202124" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Device Lab v2"
+            android:textColor="#FFFFFF"
+            android:textSize="15sp"
+            android:textStyle="bold"
+            android:gravity="center" />
+
+        <Button
+            android:id="@+id/reloadButton"
+            android:layout_width="48dp"
+            android:layout_height="42dp"
+            android:text="↻"
+            android:textSize="20sp"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#202124" />
+
+        <Button
+            android:id="@+id/browserButton"
+            android:layout_width="48dp"
+            android:layout_height="42dp"
+            android:text="⋮"
+            android:textSize="20sp"
+            android:textColor="#FFFFFF"
+            android:backgroundTint="#202124" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="3dp"
+        android:max="100"
+        android:visibility="gone" />
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <FrameLayout
+            android:id="@+id/chatPanel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent">
+
+            <WebView
+                android:id="@+id/webView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent" />
+        </FrameLayout>
+
+        <ScrollView
+            android:id="@+id/bridgePanel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:background="#FAFAFA"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="18dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="ChatGPT Device Bridge v2"
+                    android:textSize="22sp"
+                    android:textStyle="bold"
+                    android:textColor="#212121" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="6dp"
+                    android:paddingBottom="12dp"
+                    android:text="Foreground-only screen capture and allowlisted gesture control. Old commands cannot replay because every start creates a new session ID."
+                    android:textColor="#555555" />
+
+                <EditText
+                    android:id="@+id/ownerInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="GitHub owner"
+                    android:singleLine="true" />
+
+                <EditText
+                    android:id="@+id/repoInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Relay repository"
+                    android:singleLine="true" />
+
+                <EditText
+                    android:id="@+id/tokenInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Fine-grained GitHub token"
+                    android:inputType="textPassword"
+                    android:singleLine="true" />
+
+                <EditText
+                    android:id="@+id/packageInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Allowed target package"
+                    android:text="com.easybrain.number.puzzle.game"
+                    android:singleLine="true" />
+
+                <EditText
+                    android:id="@+id/pollInput"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:hint="Polling interval, seconds"
+                    android:inputType="numberDecimal"
+                    android:text="3.0"
+                    android:singleLine="true" />
+
+                <Button
+                    android:id="@+id/saveButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Save configuration" />
+
+                <Button
+                    android:id="@+id/accessibilityButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Enable accessibility service" />
+
+                <Button
+                    android:id="@+id/startButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Start bridge and screen capture" />
+
+                <Button
+                    android:id="@+id/openGameButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Open allowlisted game" />
+
+                <Button
+                    android:id="@+id/stopButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Stop bridge" />
+
+                <Button
+                    android:id="@+id/refreshStatusButton"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Refresh status" />
+
+                <TextView
+                    android:id="@+id/statusText"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="16dp"
+                    android:text="Stopped"
+                    android:textIsSelectable="true"
+                    android:textColor="#333333" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:paddingTop="18dp"
+                    android:text="Safety: gestures work only while the exact allowlisted package is in foreground. Banking, wallet, billing, Play Store and authenticator-like packages are blocked. A permanent notification and STOP button remain visible. No shell, contacts, SMS, clipboard or file-system access is included."
+                    android:textColor="#666666" />
+            </LinearLayout>
+        </ScrollView>
+    </FrameLayout>
+</LinearLayout>
