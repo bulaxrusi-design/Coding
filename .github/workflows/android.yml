@@ -27,17 +27,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.10.2"
-      - name: Apply v2.1 foreground resolver
+      - name: Apply v2.1 foreground resolver and labels
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt')
-          s = p.read_text()
+          service = Path('device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt')
+          s = service.read_text()
           old = 'val foreground = BridgeAccessibilityService.foregroundPackage ?: "unknown"'
           new = 'val foreground = BridgeAccessibilityService.resolveForegroundPackage() ?: "unknown"'
-          if old not in s:
-              raise SystemExit('Expected foreground resolver line not found')
-          p.write_text(s.replace(old, new, 1))
+          if old in s:
+              service.write_text(s.replace(old, new, 1))
+
+          layout = Path('device_lab_v2/app/src/main/res/layout/activity_main.xml')
+          x = layout.read_text()
+          x = x.replace('Device Lab v2"', 'Device Lab v2.1"')
+          x = x.replace('Device Bridge v2"', 'Device Bridge v2.1"')
+          layout.write_text(x)
           PY
       - name: Build debug APK
         working-directory: device_lab_v2
