@@ -25,7 +25,7 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false"
         android:icon="@android:drawable/ic_menu_view"
-        android:label="ChatGPT Device Lab v2.2"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.TtcBridge">
 
