@@ -92,5 +92,9 @@ jobs:
           path: |
             dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk
             dist/ChatGPT-Device-Lab-v2.4.0-final-debug.apk.sha256
+            device_lab_v2/app/build.gradle.kts
+            device_lab_v2/app/src/main/AndroidManifest.xml
+            device_lab_v2/app/src/main/java/com/ttclab/chatbridge/
+            device_lab_v2/app/src/main/res/values/strings.xml
             device_lab_v2/app/build/reports/lint-results-debug.html
             device_lab_v2/app/build/reports/tests/testDebugUnitTest/
