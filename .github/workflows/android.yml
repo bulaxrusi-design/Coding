@@ -40,7 +40,7 @@ jobs:
       - name: Verify APK metadata
         run: |
           APK=device_lab_v2/app/build/outputs/apk/debug/app-debug.apk
-          aapt dump badging "$APK" | tee /tmp/badging.txt
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
           grep -q "versionCode='4'" /tmp/badging.txt
           grep -q "versionName='2.2.0'" /tmp/badging.txt
           grep -q "application-label:'ChatGPT Device Lab v2.2'" /tmp/badging.txt
