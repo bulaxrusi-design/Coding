@@ -1,0 +1,27 @@
+name: Fetch Device Snapshot
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch relay state
+        run: |
+          mkdir -p snapshot
+          curl -fsSL --retry 3 "https://raw.githubusercontent.com/bulaxrusi-design/ttc-live-relay/main/state/current.jpg?ts=$(date +%s)" -o snapshot/current.jpg
+          curl -fsSL --retry 3 "https://raw.githubusercontent.com/bulaxrusi-design/ttc-live-relay/main/state/status.json?ts=$(date +%s)" -o snapshot/status.json
+          tesseract snapshot/current.jpg snapshot/ocr --psm 11 tsv || true
+          tesseract snapshot/current.jpg snapshot/ocr-text --psm 11 || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: relay-device-snapshot-${{ github.run_id }}
+          path: snapshot/
+          retention-days: 1
