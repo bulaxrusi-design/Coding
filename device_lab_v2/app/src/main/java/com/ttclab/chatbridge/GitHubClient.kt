@@ -72,9 +72,14 @@ class GitHubClient(
                 shaCache[path] = newSha
                 return@withContext newSha to null
             }
-            if (code == 409 || code == 422) {
+            val retryable403 = code == 403 && (
+                body.contains("Timed out validating rule", ignoreCase = true) ||
+                    body.contains("please try again", ignoreCase = true) ||
+                    body.contains("secondary rate limit", ignoreCase = true)
+                )
+            if (code == 409 || code == 422 || code == 429 || code >= 500 || retryable403) {
                 shaCache.remove(path)
-                return@withContext null to "GitHub PUT $path conflict: $code ${body.take(500)}"
+                return@withContext null to "GitHub PUT $path retryable failure: $code ${body.take(500)}"
             }
             error("GitHub PUT $path failed: $code ${body.take(500)}")
         }
