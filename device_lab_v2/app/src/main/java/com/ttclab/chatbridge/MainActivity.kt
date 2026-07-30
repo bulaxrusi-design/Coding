@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -52,14 +53,14 @@ class MainActivity : AppCompatActivity() {
 
     private val captureLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode != Activity.RESULT_OK || result.data == null) {
-            statusText.text = "Screen-capture permission denied"
+            statusText.text = "Screen-capture permission denied\n${localDiagnostics()}"
             return@registerForActivityResult
         }
         val serviceIntent = Intent(this, BridgeService::class.java)
             .putExtra(BridgeService.EXTRA_RESULT_CODE, result.resultCode)
             .putExtra(BridgeService.EXTRA_RESULT_DATA, result.data)
         ContextCompat.startForegroundService(this, serviceIntent)
-        statusText.text = "Bridge starting. Keep the notification active."
+        statusText.text = "Bridge starting. Keep the notification active.\n${localDiagnostics()}"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,8 +91,12 @@ class MainActivity : AppCompatActivity() {
         repoInput.setText(prefs.repo)
         packageInput.setText(prefs.allowedPackage)
         pollInput.setText(prefs.pollSeconds.toString())
-        tokenInput.hint = if (prefs.getToken().isBlank()) "Fine-grained GitHub token" else "Token saved securely — leave blank to keep it"
-        statusText.text = prefs.bridgeStatus
+        tokenInput.hint = if (prefs.getToken().isBlank()) {
+            "Fine-grained GitHub token"
+        } else {
+            "Token saved securely — leave blank to keep it"
+        }
+        statusText.text = "${prefs.bridgeStatus}\n${localDiagnostics()}"
     }
 
     private fun bindButtons() {
@@ -100,9 +105,24 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.reloadButton).setOnClickListener { webView.reload() }
         findViewById<Button>(R.id.browserButton).setOnClickListener { openExternal(webView.url ?: homeUrl) }
         findViewById<Button>(R.id.saveButton).setOnClickListener { saveConfiguration() }
-        findViewById<Button>(R.id.accessibilityButton).setOnClickListener { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+        findViewById<Button>(R.id.accessibilityButton).setOnClickListener {
+            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+        findViewById<Button>(R.id.usageAccessButton).setOnClickListener { openUsageAccessSettings() }
+        findViewById<Button>(R.id.selfTestButton).setOnClickListener {
+            statusText.text = "${prefs.bridgeStatus}\n${localDiagnostics()}"
+        }
         findViewById<Button>(R.id.startButton).setOnClickListener {
             if (!saveConfiguration()) return@setOnClickListener
+            val missing = mutableListOf<String>()
+            if (!isAccessibilityEnabled()) missing += "Accessibility Service"
+            if (!ForegroundResolver.hasUsageAccess(this)) missing += "Usage Access"
+            if (missing.isNotEmpty()) {
+                val message = "Enable before starting: ${missing.joinToString()}"
+                statusText.text = "$message\n${localDiagnostics()}"
+                Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
             requestNotificationPermission()
             val manager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
             captureLauncher.launch(manager.createScreenCaptureIntent())
@@ -110,15 +130,20 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.stopButton).setOnClickListener {
             startService(Intent(this, BridgeService::class.java).setAction(BridgeService.ACTION_STOP))
             prefs.bridgeStatus = "Stopped"
-            statusText.text = "Stopped"
+            statusText.text = "Stopped\n${localDiagnostics()}"
         }
         findViewById<Button>(R.id.openGameButton).setOnClickListener {
             if (!saveConfiguration()) return@setOnClickListener
             val intent = packageManager.getLaunchIntentForPackage(prefs.allowedPackage)
-            if (intent == null) Toast.makeText(this, "Target game is not installed", Toast.LENGTH_LONG).show()
-            else startActivity(intent)
+            if (intent == null) {
+                Toast.makeText(this, "Target game is not installed", Toast.LENGTH_LONG).show()
+            } else {
+                startActivity(intent)
+            }
         }
-        findViewById<Button>(R.id.refreshStatusButton).setOnClickListener { statusText.text = prefs.bridgeStatus }
+        findViewById<Button>(R.id.refreshStatusButton).setOnClickListener {
+            statusText.text = "${prefs.bridgeStatus}\n${localDiagnostics()}"
+        }
     }
 
     private fun showChat() {
@@ -129,7 +154,7 @@ class MainActivity : AppCompatActivity() {
     private fun showBridge() {
         chatPanel.visibility = View.GONE
         bridgePanel.visibility = View.VISIBLE
-        statusText.text = prefs.bridgeStatus
+        statusText.text = "${prefs.bridgeStatus}\n${localDiagnostics()}"
     }
 
     private fun saveConfiguration(): Boolean {
@@ -146,6 +171,10 @@ class MainActivity : AppCompatActivity() {
             Toast.makeText(this, "Enter a fine-grained GitHub token", Toast.LENGTH_LONG).show()
             return false
         }
+        if (CommandPolicy.isSensitivePackage(target)) {
+            Toast.makeText(this, "Sensitive target packages are blocked", Toast.LENGTH_LONG).show()
+            return false
+        }
         prefs.owner = owner
         prefs.repo = repo
         prefs.branch = "main"
@@ -155,8 +184,44 @@ class MainActivity : AppCompatActivity() {
         tokenInput.setText("")
         tokenInput.hint = "Token saved securely — leave blank to keep it"
         prefs.bridgeStatus = "Configuration saved"
-        statusText.text = prefs.bridgeStatus
+        statusText.text = "${prefs.bridgeStatus}\n${localDiagnostics()}"
         return true
+    }
+
+    private fun localDiagnostics(): String {
+        val targetInstalled = packageManager.getLaunchIntentForPackage(prefs.allowedPackage) != null
+        val accessibilityEnabled = isAccessibilityEnabled()
+        val accessibilityConnected = BridgeAccessibilityService.instance != null
+        val usageAccess = ForegroundResolver.hasUsageAccess(this)
+        val resolution = ForegroundResolver.resolve(this)
+        return buildString {
+            appendLine("Device Lab ${BuildConfig.VERSION_NAME} self-test")
+            appendLine("Target installed: $targetInstalled")
+            appendLine("Accessibility enabled: $accessibilityEnabled")
+            appendLine("Accessibility connected: $accessibilityConnected")
+            appendLine("Usage access: $usageAccess")
+            appendLine("Foreground: ${resolution.packageName ?: "unknown"}")
+            append("Foreground source: ${resolution.source}")
+        }
+    }
+
+    private fun isAccessibilityEnabled(): Boolean {
+        val expected = ComponentName(this, BridgeAccessibilityService::class.java).flattenToString()
+        val enabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty()
+        return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    }
+
+    private fun openUsageAccessSettings() {
+        val packageUri = Uri.parse("package:$packageName")
+        val packageIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS, packageUri)
+        try {
+            startActivity(packageIntent)
+        } catch (_: ActivityNotFoundException) {
+            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+        }
     }
 
     private fun configureWebView() {
@@ -179,17 +244,25 @@ class MainActivity : AppCompatActivity() {
         }
 
         webView.webViewClient = object : WebViewClient() {
-            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) { progress.visibility = View.VISIBLE }
+            override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
+                progress.visibility = View.VISIBLE
+            }
+
             override fun onPageFinished(view: WebView?, url: String?) {
                 progress.visibility = View.GONE
                 CookieManager.getInstance().flush()
             }
+
             override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
                 val uri = request?.url ?: return false
                 val scheme = uri.scheme ?: return false
                 if (scheme == "http" || scheme == "https") return false
-                return try { startActivity(Intent(Intent.ACTION_VIEW, uri)); true }
-                catch (_: ActivityNotFoundException) { true }
+                return try {
+                    startActivity(Intent(Intent.ACTION_VIEW, uri))
+                    true
+                } catch (_: ActivityNotFoundException) {
+                    true
+                }
             }
         }
 
@@ -198,7 +271,12 @@ class MainActivity : AppCompatActivity() {
                 progress.progress = newProgress
                 progress.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
             }
-            override fun onShowFileChooser(webView: WebView?, callback: ValueCallback<Array<Uri>>?, params: FileChooserParams?): Boolean {
+
+            override fun onShowFileChooser(
+                webView: WebView?,
+                callback: ValueCallback<Array<Uri>>?,
+                params: FileChooserParams?
+            ): Boolean {
                 filePathCallback?.onReceiveValue(null)
                 filePathCallback = callback
                 return try {
@@ -210,15 +288,26 @@ class MainActivity : AppCompatActivity() {
                     false
                 }
             }
+
             override fun onPermissionRequest(request: PermissionRequest?) {
                 if (request == null) return
                 runOnUiThread {
                     pendingPermissionRequest = request
-                    if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED &&
-                        ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
+                    if (ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED &&
+                        ContextCompat.checkSelfPermission(
+                            this@MainActivity,
+                            Manifest.permission.RECORD_AUDIO
+                        ) == PackageManager.PERMISSION_GRANTED
+                    ) {
                         grantPendingWebPermission()
                     } else {
-                        requestPermissions(arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO), MEDIA_PERMISSION_REQUEST)
+                        requestPermissions(
+                            arrayOf(Manifest.permission.CAMERA, Manifest.permission.RECORD_AUDIO),
+                            MEDIA_PERMISSION_REQUEST
+                        )
                     }
                 }
             }
@@ -235,7 +324,9 @@ class MainActivity : AppCompatActivity() {
                 request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 request.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name)
                 (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
-            } catch (_: Exception) { openExternal(url) }
+            } catch (_: Exception) {
+                openExternal(url)
+            }
         })
     }
 
@@ -245,19 +336,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestNotificationPermission() {
-        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+        if (Build.VERSION.SDK_INT >= 33 && ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 991)
         }
     }
 
     private fun openExternal(url: String) {
-        try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        catch (_: ActivityNotFoundException) { Toast.makeText(this, "Browser unavailable", Toast.LENGTH_SHORT).show() }
+        try {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(this, "Browser unavailable", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        if (::statusText.isInitialized) statusText.text = prefs.bridgeStatus
+        if (::statusText.isInitialized && bridgePanel.visibility == View.VISIBLE) {
+            statusText.text = "${prefs.bridgeStatus}\n${localDiagnostics()}"
+        }
     }
 
     override fun onBackPressed() {
@@ -279,11 +379,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == MEDIA_PERMISSION_REQUEST) {
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) grantPendingWebPermission()
-            else {
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                grantPendingWebPermission()
+            } else {
                 pendingPermissionRequest?.deny()
                 pendingPermissionRequest = null
             }
