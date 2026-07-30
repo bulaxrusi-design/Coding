@@ -2,6 +2,7 @@ package com.ttclab.chatbridge
 
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.BufferedReader
@@ -35,23 +36,40 @@ class GitHubClient(
         return file.bytes.toString(Charsets.UTF_8) to file.sha
     }
 
-    suspend fun putBytes(path: String, bytes: ByteArray, message: String): String = withContext(Dispatchers.IO) {
-        val currentSha = runCatching { getFile(path)?.sha }.getOrNull()
-        val payload = JSONObject()
-            .put("message", message)
-            .put("content", Base64.encodeToString(bytes, Base64.NO_WRAP))
-            .put("branch", branch)
-        if (currentSha != null) payload.put("sha", currentSha)
-
-        val url = URL("https://api.github.com/repos/${encode(owner)}/${encode(repo)}/contents/${encodePath(path)}")
-        val connection = open(url, "PUT")
-        connection.doOutput = true
-        connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
-        val code = connection.responseCode
-        val body = readBody(connection)
-        if (code !in 200..299) error("GitHub PUT $path failed: $code ${body.take(500)}")
-        JSONObject(body).getJSONObject("content").getString("sha")
+    suspend fun putBytes(path: String, bytes: ByteArray, message: String): String {
+        var lastFailure: String? = null
+        repeat(5) { attempt ->
+            val result = putBytesOnce(path, bytes, message)
+            if (result.first != null) return result.first!!
+            lastFailure = result.second
+            delay(250L * (attempt + 1))
+        }
+        error(lastFailure ?: "GitHub PUT $path failed after retries")
     }
+
+    private suspend fun putBytesOnce(path: String, bytes: ByteArray, message: String): Pair<String?, String?> =
+        withContext(Dispatchers.IO) {
+            val currentSha = getFile(path)?.sha
+            val payload = JSONObject()
+                .put("message", message)
+                .put("content", Base64.encodeToString(bytes, Base64.NO_WRAP))
+                .put("branch", branch)
+            if (currentSha != null) payload.put("sha", currentSha)
+
+            val url = URL("https://api.github.com/repos/${encode(owner)}/${encode(repo)}/contents/${encodePath(path)}")
+            val connection = open(url, "PUT")
+            connection.doOutput = true
+            connection.outputStream.use { it.write(payload.toString().toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            val body = readBody(connection)
+            if (code in 200..299) {
+                return@withContext JSONObject(body).getJSONObject("content").getString("sha") to null
+            }
+            if (code == 409 || code == 422) {
+                return@withContext null to "GitHub PUT $path conflict: $code ${body.take(500)}"
+            }
+            error("GitHub PUT $path failed: $code ${body.take(500)}")
+        }
 
     suspend fun putText(path: String, text: String, message: String): String =
         putBytes(path, text.toByteArray(Charsets.UTF_8), message)
