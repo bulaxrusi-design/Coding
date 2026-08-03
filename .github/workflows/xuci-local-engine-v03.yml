@@ -1,0 +1,113 @@
+name: Build xuci1.0 Local Engine v0.3
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/xuci-local-engine-v03.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-local-engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout trigger branch
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle cache
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept licenses and install native toolchain
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager \
+            'platforms;android-36' \
+            'build-tools;35.0.0' \
+            'platform-tools' \
+            'ndk;29.0.13113456' \
+            'cmake;3.31.6'
+
+      - name: Clone pinned llama.cpp Android engine
+        run: |
+          git clone https://github.com/ggml-org/llama.cpp.git engine
+          cd engine
+          git checkout fe2adf0e722f30f5295fdec8a0f1dc788f7498bc
+          git rev-parse HEAD
+
+      - name: Apply xuci1.0 local-only customization
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          root = Path('engine/examples/llama.android')
+
+          # Samsung Galaxy A70 compatibility and xuci package identity.
+          for rel in ['app/build.gradle.kts', 'lib/build.gradle.kts']:
+              p = root / rel
+              s = p.read_text()
+              s = s.replace('minSdk = 33', 'minSdk = 26')
+              if rel.startswith('app/'):
+                  s = s.replace('applicationId = "com.example.llama.aichat"', 'applicationId = "ai.xuci.one.local"')
+                  s = s.replace('versionCode = 1', 'versionCode = 3')
+                  s = s.replace('versionName = "1.0"', 'versionName = "0.3.0-local-alpha"')
+              p.write_text(s)
+
+          strings = root / 'app/src/main/res/values/strings.xml'
+          strings.write_text('''<resources>\n    <string name="app_name">xuci1.0 Local</string>\n</resources>\n''')
+
+          main = root / 'app/src/main/java/com/example/llama/MainActivity.kt'
+          s = main.read_text()
+          s = s.replace('"Parsing GGUF..."', '"GGUF მოდელის შემოწმება…"')
+          s = s.replace('"Copying file..."', '"მოდელის ლოკალურ საცავში გადატანა…"')
+          s = s.replace('"Loading model..."', '"ლოკალური ტვინის ჩატვირთვა…"')
+          s = s.replace('"Type and send a message!"', '"დაწერე Android, Python ან coding ამოცანა…"')
+          s = s.replace('"Input message is empty!"', '"შეტყობინება ცარიელია"')
+          s = s.replace('engine.sendUserPrompt(userMsg)', 'engine.sendUserPrompt(xuciPrompt(userMsg))')
+          marker = '    /**\n     * Run a benchmark with the model file\n     */'
+          helper = '''    private fun xuciPrompt(userMsg: String): String = """\nYou are xuci1.0, a fully local, privacy-first coding partner running on this Android phone.\nPrimary specialties: Android, Kotlin, Java, Python, Gradle, APK structure, debugging, testing, and secure defensive analysis.\nReply in Georgian unless the user explicitly requests another language. Preserve code, identifiers, commands, and error messages exactly.\nBe practical: provide runnable code, explain assumptions, and never claim a command or build succeeded unless evidence is available.\nUse prior conversation context supplied by the model runtime, but do not invent access to files that were not provided.\n\nმომხმარებლის ამოცანა:\n$userMsg\n""".trimIndent()\n\n'''
+          if marker not in s:
+              raise SystemExit('MainActivity insertion marker not found')
+          s = s.replace(marker, helper + marker)
+          main.write_text(s)
+          PY
+
+      - name: Build ARM64 debug APK
+        working-directory: engine/examples/llama.android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify APK structure and digest
+        run: |
+          set -euo pipefail
+          APK='engine/examples/llama.android/app/build/outputs/apk/debug/app-debug.apk'
+          test -f "$APK"
+          unzip -t "$APK"
+          unzip -l "$APK" | grep -E 'AndroidManifest.xml|classes.dex|lib/arm64-v8a/.*\.so'
+          sha256sum "$APK" | tee xuci1.0-local-v0.3.apk.sha256
+          cp "$APK" xuci1.0-local-v0.3-debug.apk
+          stat --printf='APK bytes: %s\n' xuci1.0-local-v0.3-debug.apk
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci1.0-local-v0.3-apk
+          path: |
+            xuci1.0-local-v0.3-debug.apk
+            xuci1.0-local-v0.3.apk.sha256
+          if-no-files-found: error
+          retention-days: 7
