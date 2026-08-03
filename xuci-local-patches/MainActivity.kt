@@ -1,13 +1,11 @@
 package com.example.llama
 
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -24,35 +22,30 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
 import java.util.Locale
-import java.util.UUID
 
 /**
- * xuci1.0 Local Alpha
- *
- * No account, API key, paid endpoint or token billing is used. The free GGUF model is downloaded
- * once from the official Qwen repository, verified with SHA-256 and then executed entirely on-device
- * through the official llama.cpp Android binding.
+ * xuci1.0 Local Alpha.
+ * No account, API key, paid endpoint or token billing is used.
  */
 class MainActivity : AppCompatActivity() {
     private lateinit var statusTv: TextView
     private lateinit var messagesRv: RecyclerView
     private lateinit var userInputEt: EditText
     private lateinit var userActionFab: FloatingActionButton
-
     private lateinit var engine: InferenceEngine
+
+    private val messages = mutableListOf<Message>()
+    private val messageAdapter = MessageAdapter(messages)
+    private val lastAssistantMsg = StringBuilder()
+    private val prefs by lazy { getSharedPreferences("xuci_local_memory", MODE_PRIVATE) }
+
     private var generationJob: Job? = null
     private var isModelReady = false
     private var isPreparingModel = false
-
-    private val messages = mutableListOf<Message>()
-    private val lastAssistantMsg = StringBuilder()
-    private val messageAdapter = MessageAdapter(messages)
-    private val prefs by lazy { getSharedPreferences("xuci_local_memory", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,26 +59,24 @@ class MainActivity : AppCompatActivity() {
         userActionFab = findViewById(R.id.fab)
 
         addAssistant(
-            "გამარჯობა. მე ვარ xuci1.0 Local — უფასო, ლოკალური coding პარტნიორი. " +
+            "გამარჯობა. მე ვარ xuci1.0 Local — უფასო ლოკალური coding პარტნიორი. " +
                 "პირველ გაშვებაზე ჩამოვტვირთავ დაახლოებით 429 MB მოდელს; შემდეგ API key და ინტერნეტი აღარ დამჭირდება."
         )
 
         userActionFab.setOnClickListener {
             when {
                 isModelReady -> handleUserInput()
-                !isPreparingModel -> prepareLocalModel(forceDownload = false)
+                !isPreparingModel && ::engine.isInitialized -> prepareLocalModel(false)
             }
         }
 
-        lifecycleScope.launch(Dispatchers.Default) {
+        lifecycleScope.launch {
             try {
                 engine = AiChat.getInferenceEngine(applicationContext)
-                withContext(Dispatchers.Main) { prepareLocalModel(forceDownload = false) }
+                prepareLocalModel(false)
             } catch (t: Throwable) {
                 Log.e(TAG, "Engine initialization failed", t)
-                withContext(Dispatchers.Main) {
-                    showFailure("ლოკალური ძრავა ვერ ჩაირთო: ${safeMessage(t)}")
-                }
+                showFailure("ლოკალური ძრავა ვერ ჩაირთო: ${safeMessage(t)}")
             }
         }
     }
@@ -100,8 +91,9 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val modelFile = File(ensureModelsDirectory(), MODEL_FILE_NAME)
-                val marker = File(ensureModelsDirectory(), "$MODEL_FILE_NAME.ok")
+                val modelsDir = ensureModelsDirectory()
+                val modelFile = File(modelsDir, MODEL_FILE_NAME)
+                val marker = File(modelsDir, "$MODEL_FILE_NAME.ok")
 
                 if (forceDownload) {
                     modelFile.delete()
@@ -113,24 +105,27 @@ class MainActivity : AppCompatActivity() {
                     updateStatus("მოდელის მთლიანობის შემოწმება…")
                     val actual = sha256(modelFile)
                     check(actual.equals(MODEL_SHA256, ignoreCase = true)) {
+                        modelFile.delete()
                         "SHA-256 არ ემთხვევა. მიღებულია $actual"
                     }
                     marker.writeText(actual)
                 }
 
-                updateStatus("მოდელის ჩატვირთვა RAM-ში… პირველ ჯერზე შეიძლება ცოტა ხანი დასჭირდეს")
-                engine.loadModel(modelFile.absolutePath)
+                updateStatus("მოდელის ჩატვირთვა RAM-ში…")
+                modelFile.inputStream().buffered(BUFFER_SIZE).use { input ->
+                    engine.loadModel(input)
+                }
 
                 withContext(Dispatchers.Main) {
                     isPreparingModel = false
                     isModelReady = true
                     window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    statusTv.text = "LOCAL • Qwen2.5-Coder 0.5B Q4 • API key: არ სჭირდება • მეხსიერება: ჩართული"
+                    statusTv.text = "LOCAL • Qwen2.5-Coder 0.5B Q4 • API key არ სჭირდება • მეხსიერება ჩართულია"
                     userInputEt.hint = "მკითხე Android, Python, APK ან სხვა რამ…"
                     userInputEt.isEnabled = true
                     userActionFab.setImageResource(R.drawable.outline_send_24)
                     userActionFab.isEnabled = true
-                    addAssistant("ტვინი მზადაა. პასუხები ახლა მთლიანად შენს ტელეფონზე გენერირდება.")
+                    addAssistant("ტვინი მზადაა. პასუხები მთლიანად შენს ტელეფონზე გენერირდება.")
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "Model preparation failed", t)
@@ -161,6 +156,7 @@ class MainActivity : AppCompatActivity() {
                 setRequestProperty("Accept-Encoding", "identity")
                 connect()
             }
+
             val code = connection!!.responseCode
             if (code in 300..399) {
                 val location = connection!!.getHeaderField("Location")
@@ -183,16 +179,13 @@ class MainActivity : AppCompatActivity() {
                                 val percent = ((copied * 100L) / total).toInt()
                                 if (percent != lastPercent) {
                                     lastPercent = percent
-                                    updateStatus(
-                                        "მოდელი იტვირთება: $percent% • ${formatBytes(copied)} / ${formatBytes(total)}"
-                                    )
+                                    updateStatus("მოდელი იტვირთება: $percent% • ${formatBytes(copied)} / ${formatBytes(total)}")
                                 }
-                            } else if (copied % (16L * 1024L * 1024L) < BUFFER_SIZE) {
-                                updateStatus("მოდელი იტვირთება: ${formatBytes(copied)}")
                             }
                         }
                     }
                 }
+
                 if (!partial.renameTo(destination)) {
                     partial.copyTo(destination, overwrite = true)
                     partial.delete()
@@ -222,38 +215,33 @@ class MainActivity : AppCompatActivity() {
         userActionFab.isEnabled = false
         addUser(userMsg)
         lastAssistantMsg.clear()
-        messages.add(Message(UUID.randomUUID().toString(), "", false))
+        messages.add(Message("", false))
         messageAdapter.notifyItemInserted(messages.lastIndex)
         messagesRv.scrollToPosition(messages.lastIndex)
 
         val prompt = buildPrompt(userMsg)
-        generationJob = lifecycleScope.launch(Dispatchers.Default) {
+        generationJob = lifecycleScope.launch {
             engine.sendUserPrompt(prompt)
                 .onCompletion { cause ->
-                    withContext(Dispatchers.Main) {
-                        userInputEt.isEnabled = true
-                        userActionFab.isEnabled = true
-                        if (cause == null) {
-                            rememberExchange(userMsg, lastAssistantMsg.toString())
-                        } else {
-                            Toast.makeText(
-                                this@MainActivity,
-                                "გენერაცია შეწყდა: ${safeMessage(cause)}",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
+                    userInputEt.isEnabled = true
+                    userActionFab.isEnabled = true
+                    if (cause == null) {
+                        rememberExchange(userMsg, lastAssistantMsg.toString())
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "გენერაცია შეწყდა: ${safeMessage(cause)}",
+                            Toast.LENGTH_LONG
+                        ).show()
                     }
                 }
                 .collect { token ->
-                    withContext(Dispatchers.Main) {
-                        val last = messages.lastIndex
-                        if (last >= 0 && !messages[last].isUser) {
-                            messages[last] = messages[last].copy(
-                                content = lastAssistantMsg.append(token).toString()
-                            )
-                            messageAdapter.notifyItemChanged(last)
-                            messagesRv.scrollToPosition(last)
-                        }
+                    val last = messages.lastIndex
+                    if (last >= 0) {
+                        lastAssistantMsg.append(token)
+                        messages[last] = Message(lastAssistantMsg.toString().trimStart(), false)
+                        messageAdapter.notifyItemChanged(last)
+                        messagesRv.scrollToPosition(last)
                     }
                 }
         }
@@ -263,9 +251,9 @@ class MainActivity : AppCompatActivity() {
         val memory = prefs.getString(KEY_MEMORY, "").orEmpty().takeLast(MAX_MEMORY_CHARS)
         val agent = routeAgent(userMsg)
         return """
-            შენ ხარ xuci1.0 — ოფლაინ, პირადი coding პარტნიორი Samsung Galaxy A70-ზე.
+            შენ ხარ xuci1.0 — ოფლაინ პირადი coding პარტნიორი Samsung Galaxy A70-ზე.
             პასუხი დაწერე ქართულად, გასაგებად და პრაქტიკულად. კოდი დატოვე მის ბუნებრივ პროგრამირების ენაზე.
-            არ მოიგონო შესრულებული ტესტი ან ფაილი. თუ რამე არ იცი, პირდაპირ თქვი.
+            არ მოიგონო შესრულებული ტესტი ან ფაილი. უცნობი რამ პირდაპირ აღნიშნე.
             აქტიური სპეციალისტი: $agent
             წინა ადგილობრივი გამოცდილება:
             $memory
@@ -279,13 +267,13 @@ class MainActivity : AppCompatActivity() {
         val q = text.lowercase(Locale.ROOT)
         return when {
             listOf("apk", "აპკ", "manifest", "smali", "dex", "decompile").any(q::contains) ->
-                "APK Analyst — ახსენი APK სტრუქტურა, Manifest, DEX და უსაფრთხოების საკითხები"
+                "APK Analyst — APK სტრუქტურა, Manifest, DEX და უსაფრთხოება"
             listOf("python", "პითონ", ".py", "pip").any(q::contains) ->
-                "Python Engineer — დაწერე გამართული Python და მიუთითე შემოწმების გზა"
+                "Python Engineer — გამართული Python და შემოწმების გზა"
             listOf("android", "kotlin", "java", "gradle", "compose", "ანდროიდ").any(q::contains) ->
-                "Android Engineer — ფოკუსი Kotlin/Java/Gradle/Android SDK-ზე"
+                "Android Engineer — Kotlin, Java, Gradle და Android SDK"
             listOf("error", "exception", "crash", "შეცდომ", "ლოგ").any(q::contains) ->
-                "Debugger — მოძებნე ძირეული მიზეზი და შემოგვთავაზე მინიმალური გამოსწორება"
+                "Debugger — ძირეული მიზეზი და მინიმალური გამოსწორება"
             else -> "General Reasoning and Coding Agent"
         }
     }
@@ -325,13 +313,13 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addUser(text: String) {
-        messages.add(Message(UUID.randomUUID().toString(), text, true))
+        messages.add(Message(text, true))
         messageAdapter.notifyItemInserted(messages.lastIndex)
         messagesRv.scrollToPosition(messages.lastIndex)
     }
 
     private fun addAssistant(text: String) {
-        messages.add(Message(UUID.randomUUID().toString(), text, false))
+        messages.add(Message(text, false))
         messageAdapter.notifyItemInserted(messages.lastIndex)
         messagesRv.scrollToPosition(messages.lastIndex)
     }
@@ -348,7 +336,7 @@ class MainActivity : AppCompatActivity() {
         withContext(Dispatchers.Main) { statusTv.text = text }
     }
 
-    private fun ensureModelsDirectory() = File(filesDir, "models").also {
+    private fun ensureModelsDirectory(): File = File(filesDir, "models").also {
         if (it.exists() && !it.isDirectory) it.delete()
         if (!it.exists()) check(it.mkdirs()) { "models საქაღალდე ვერ შეიქმნა" }
     }
@@ -380,30 +368,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun safeMessage(t: Throwable): String = t.message?.take(300) ?: t.javaClass.simpleName
 
-    private val importModel = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
-        uri ?: return@registerForActivityResult
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val target = File(ensureModelsDirectory(), MODEL_FILE_NAME)
-                contentResolver.openInputStream(uri)?.use { input: InputStream ->
-                    FileOutputStream(target).use { output -> input.copyTo(output, BUFFER_SIZE) }
-                } ?: error("ფაილი ვერ გაიხსნა")
-                File(ensureModelsDirectory(), "$MODEL_FILE_NAME.ok").delete()
-                withContext(Dispatchers.Main) { prepareLocalModel(forceDownload = false) }
-            } catch (t: Throwable) {
-                withContext(Dispatchers.Main) { showFailure(safeMessage(t)) }
-            }
-        }
-    }
-
     override fun onStop() {
         generationJob?.cancel()
         super.onStop()
-    }
-
-    override fun onDestroy() {
-        if (::engine.isInitialized) engine.destroy()
-        super.onDestroy()
     }
 
     companion object {
