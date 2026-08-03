@@ -87,7 +87,7 @@
                 android:background="#222630"
                 android:enabled="false"
                 android:hint="მოდელი ჯერ მზადდება…"
-                android:hintTextColor="#7E8796"
+                android:textColorHint="#7E8796"
                 android:maxLines="5"
                 android:minLines="2"
                 android:padding="10dp"
