@@ -1,0 +1,74 @@
+name: Build xuci1.0 Puter Guest APK
+
+on:
+  push:
+    branches: [xuci-puter-v05]
+    paths:
+      - 'xuci-puter-source/**'
+      - '.github/workflows/xuci-puter-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'xuci-puter-source/**'
+      - '.github/workflows/xuci-puter-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: yes | sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
+
+      - name: Reconstruct source
+        run: |
+          cat xuci-puter-source/part-*.b64 > /tmp/xuci-source.b64
+          base64 -d /tmp/xuci-source.b64 > /tmp/xuci-source.zip
+          unzip -t /tmp/xuci-source.zip
+          mkdir -p xuci-puter
+          unzip -q /tmp/xuci-source.zip -d xuci-puter
+          test -f xuci-puter/app/src/main/assets/index.html
+          test -f xuci-puter/app/src/main/java/ai/xuci/one/MainActivity.java
+
+      - name: Build debug APK
+        working-directory: xuci-puter
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify APK
+        run: |
+          APK=xuci-puter/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          unzip -t "$APK"
+          unzip -l "$APK" | grep -q 'AndroidManifest.xml'
+          unzip -l "$APK" | grep -q 'classes.dex'
+          mkdir -p dist/xuci-puter
+          cp "$APK" dist/xuci-puter/xuci1.0-puter-guest-v0.5-debug.apk
+          sha256sum dist/xuci-puter/xuci1.0-puter-guest-v0.5-debug.apk | tee dist/xuci-puter/xuci1.0-puter-guest-v0.5-debug.apk.sha256
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci1.0-puter-guest-apk
+          path: |
+            dist/xuci-puter/xuci1.0-puter-guest-v0.5-debug.apk
+            dist/xuci-puter/xuci1.0-puter-guest-v0.5-debug.apk.sha256
+          if-no-files-found: error
+          retention-days: 14
