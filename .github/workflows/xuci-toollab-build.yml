@@ -45,10 +45,18 @@ jobs:
         run: |
           cat xuci-toollab-build/chunks/* > /tmp/xuci-toollab.b64
           base64 -d /tmp/xuci-toollab.b64 > /tmp/xuci-toollab.zip
+          sha256sum /tmp/xuci-toollab.zip
+          set +e
           unzip -t /tmp/xuci-toollab.zip
-          unzip -q /tmp/xuci-toollab.zip -d .
+          TEST_RC=$?
+          unzip -oq /tmp/xuci-toollab.zip -d .
+          EXTRACT_RC=$?
+          set -e
+          test "$TEST_RC" -le 1
+          test "$EXTRACT_RC" -le 1
           test -f xuci-toollab/app/src/main/java/ai/xuci/one/MainActivity.java
           test -f xuci-toollab/app/src/main/assets/setup-xuci.sh
+          test -f xuci-toollab/app/build.gradle
           bash -n xuci-toollab/app/src/main/assets/setup-xuci.sh
 
       - name: Build debug APK
