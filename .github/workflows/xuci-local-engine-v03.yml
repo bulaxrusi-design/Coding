@@ -52,18 +52,22 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           root = Path('engine/examples/llama.android')
 
-          # Samsung Galaxy A70 compatibility and xuci package identity.
+          # Samsung Galaxy A70 compatibility, xuci identity, and ARM64-only output.
           for rel in ['app/build.gradle.kts', 'lib/build.gradle.kts']:
               p = root / rel
               s = p.read_text()
               s = s.replace('minSdk = 33', 'minSdk = 26')
+              s = s.replace('listOf("arm64-v8a", "x86_64")', 'listOf("arm64-v8a")')
               if rel.startswith('app/'):
                   s = s.replace('applicationId = "com.example.llama.aichat"', 'applicationId = "ai.xuci.one.local"')
                   s = s.replace('versionCode = 1', 'versionCode = 3')
                   s = s.replace('versionName = "1.0"', 'versionName = "0.3.0-local-alpha"')
+                  if 'androidx.datastore:datastore-preferences' not in s:
+                      s += '\n\ndependencies {\n    implementation("androidx.datastore:datastore-preferences:1.1.7")\n}\n'
               p.write_text(s)
 
           strings = root / 'app/src/main/res/values/strings.xml'
@@ -76,14 +80,32 @@ jobs:
           s = s.replace('"Loading model..."', '"ლოკალური ტვინის ჩატვირთვა…"')
           s = s.replace('"Type and send a message!"', '"დაწერე Android, Python ან coding ამოცანა…"')
           s = s.replace('"Input message is empty!"', '"შეტყობინება ცარიელია"')
-          s = s.replace('engine.sendUserPrompt(userMsg)', 'engine.sendUserPrompt(xuciPrompt(userMsg))')
+          s = s.replace('viewModel.sendUserPrompt(userMsg)', 'viewModel.sendUserPrompt(xuciPrompt(userMsg))')
           marker = '    /**\n     * Run a benchmark with the model file\n     */'
           helper = '''    private fun xuciPrompt(userMsg: String): String = """\nYou are xuci1.0, a fully local, privacy-first coding partner running on this Android phone.\nPrimary specialties: Android, Kotlin, Java, Python, Gradle, APK structure, debugging, testing, and secure defensive analysis.\nReply in Georgian unless the user explicitly requests another language. Preserve code, identifiers, commands, and error messages exactly.\nBe practical: provide runnable code, explain assumptions, and never claim a command or build succeeded unless evidence is available.\nUse prior conversation context supplied by the model runtime, but do not invent access to files that were not provided.\n\nმომხმარებლის ამოცანა:\n$userMsg\n""".trimIndent()\n\n'''
           if marker not in s:
               raise SystemExit('MainActivity insertion marker not found')
           s = s.replace(marker, helper + marker)
           main.write_text(s)
+
+          # The pinned sample uses an old direct Preferences.Key constructor.
+          # Make it compile against the current AndroidX DataStore API.
+          settings = root / 'app/src/main/java/com/example/llama/Settings.kt'
+          ss = settings.read_text()
+          if 'import androidx.datastore.preferences.preferencesDataStore' not in ss:
+              ss = ss.replace('package com.example.llama\n', 'package com.example.llama\n\nimport androidx.datastore.preferences.preferencesDataStore\n')
+          if 'import androidx.datastore.preferences.core.intPreferencesKey' not in ss:
+              ss = ss.replace('package com.example.llama\n', 'package com.example.llama\n\nimport androidx.datastore.preferences.core.intPreferencesKey\n')
+          ss = re.sub(r'Preferences\.Key<Int>\(([^)]+)\)', r'intPreferencesKey(\1)', ss)
+          settings.write_text(ss)
           PY
+
+      - name: Snapshot patched Kotlin sources
+        run: |
+          tar -czf xuci-patched-source.tgz \
+            engine/examples/llama.android/app/src/main/java/com/example/llama \
+            engine/examples/llama.android/app/build.gradle.kts \
+            engine/examples/llama.android/lib/build.gradle.kts
 
       - name: Build ARM64 debug APK
         working-directory: engine/examples/llama.android
@@ -111,3 +133,12 @@ jobs:
             xuci1.0-local-v0.3.apk.sha256
           if-no-files-found: error
           retention-days: 7
+
+      - name: Upload patched source on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci1.0-local-v0.3-diagnostic-source
+          path: xuci-patched-source.tgz
+          if-no-files-found: warn
+          retention-days: 2
