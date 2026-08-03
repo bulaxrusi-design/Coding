@@ -6,6 +6,11 @@ on:
     paths:
       - 'xuci1.0-alpha/**'
       - '.github/workflows/xuci-alpha-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'xuci1.0-alpha/**'
+      - '.github/workflows/xuci-alpha-build.yml'
   workflow_dispatch:
 
 permissions:
@@ -50,6 +55,7 @@ jobs:
           sha256sum dist/xuci-local/xuci1.0-local-bridge-v0.3-debug.apk | tee dist/xuci-local/xuci1.0-local-bridge-v0.3-debug.apk.sha256
 
       - name: Publish APK on branch
+        if: github.event_name == 'push'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
