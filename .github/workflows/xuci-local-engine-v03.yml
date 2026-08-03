@@ -7,13 +7,17 @@ on:
       - '.github/workflows/xuci-local-engine-v03.yml'
   workflow_dispatch:
 
+concurrency:
+  group: xuci-local-engine-v03
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   build-local-engine:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 45
 
     steps:
       - name: Checkout trigger branch
@@ -48,7 +52,7 @@ jobs:
           git checkout fe2adf0e722f30f5295fdec8a0f1dc788f7498bc
           git rev-parse HEAD
 
-      - name: Apply stable xuci local-engine identity
+      - name: Apply xuci A70 local-engine optimization
         run: |
           python3 - <<'PY'
           from pathlib import Path
@@ -67,13 +71,14 @@ jobs:
           lib_text = lib.read_text()
           lib_text = lib_text.replace('minSdk = 33', 'minSdk = 28')
           lib_text = lib_text.replace('listOf("arm64-v8a", "x86_64")', 'listOf("arm64-v8a")')
+          lib_text = lib_text.replace('"-DGGML_CPU_ALL_VARIANTS=ON"', '"-DGGML_CPU_ALL_VARIANTS=OFF"')
           lib.write_text(lib_text)
 
           strings = root / 'app/src/main/res/values/strings.xml'
           strings.write_text('''<resources>\n    <string name="app_name">xuci1.0 Local</string>\n</resources>\n''')
           PY
 
-      - name: Build official local-inference UI and ARM64 engine
+      - name: Build official local-inference UI and baseline ARM64 engine
         working-directory: engine/examples/llama.android
         run: |
           chmod +x gradlew
