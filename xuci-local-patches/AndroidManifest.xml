@@ -5,10 +5,13 @@
 
     <application
         android:allowBackup="false"
+        android:extractNativeLibs="true"
         android:fullBackupContent="false"
+        android:icon="@mipmap/ic_launcher_round"
         android:label="xuci1.0 Local"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.LlamaAndroid"
+        android:theme="@style/Theme.AiChatSample"
         android:usesCleartextTraffic="false">
         <activity
             android:name=".MainActivity"
