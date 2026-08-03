@@ -78,6 +78,31 @@ jobs:
           text = text.replace('minSdk = 33', 'minSdk = 30')
           text = text.replace('abiFilters += listOf("arm64-v8a", "x86_64")', 'abiFilters += listOf("arm64-v8a")')
           lib.write_text(text)
+
+          main = Path('source/examples/llama.android/app/src/main/java/com/example/llama/MainActivity.kt')
+          text = main.read_text()
+          text = text.replace('import java.util.Locale\n', 'import java.util.Locale\nimport java.util.UUID\n')
+          text = text.replace(
+              'modelFile.inputStream().buffered(BUFFER_SIZE).use { input ->\n                    engine.loadModel(input)\n                }',
+              'engine.loadModel(modelFile.absolutePath)'
+          )
+          text = text.replace(
+              'messages.add(Message("", false))',
+              'messages.add(Message(UUID.randomUUID().toString(), "", false))'
+          )
+          text = text.replace(
+              'messages[last] = Message(lastAssistantMsg.toString().trimStart(), false)',
+              'messages[last] = Message(messages[last].id, lastAssistantMsg.toString().trimStart(), false)'
+          )
+          text = text.replace(
+              'messages.add(Message(text, true))',
+              'messages.add(Message(UUID.randomUUID().toString(), text, true))'
+          )
+          text = text.replace(
+              'messages.add(Message(text, false))',
+              'messages.add(Message(UUID.randomUUID().toString(), text, false))'
+          )
+          main.write_text(text)
           PY
 
       - name: Build arm64 debug APK
