@@ -1,0 +1,38 @@
+name: Export xuci APK
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/xuci-download-artifact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  export-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout isolated artifact branch
+        uses: actions/checkout@v4
+        with:
+          ref: xuci-alpha-artifact
+
+      - name: Decode and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd xuci-build-output
+          base64 -d xuci1.0-alpha-debug.apk.b64 > xuci1.0-alpha-debug.apk
+          echo "$(cat xuci1.0-alpha-debug.apk.sha256)  xuci1.0-alpha-debug.apk" | sha256sum -c -
+          unzip -t xuci1.0-alpha-debug.apk
+          test "$(stat --printf='%s' xuci1.0-alpha-debug.apk)" = "$(cat xuci1.0-alpha-debug.apk.size)"
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci1.0-alpha-debug-apk
+          path: xuci-build-output/xuci1.0-alpha-debug.apk
+          if-no-files-found: error
+          retention-days: 7
