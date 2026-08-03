@@ -6,6 +6,11 @@ on:
     paths:
       - 'xuci1.0-alpha/**'
       - '.github/workflows/xuci-alpha-build.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'xuci1.0-alpha/**'
+      - '.github/workflows/xuci-alpha-build.yml'
   workflow_dispatch:
 
 permissions:
