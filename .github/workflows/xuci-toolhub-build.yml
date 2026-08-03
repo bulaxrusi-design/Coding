@@ -38,12 +38,22 @@ jobs:
       - name: Install Android platform
         run: yes | sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Reconstruct Tool Hub source
+      - name: Reconstruct and patch Tool Hub source
         run: |
           cat xuci_toolhub_payload/chunk_* | base64 -d > /tmp/xuci-toolhub-source.zip
           unzip -t /tmp/xuci-toolhub-source.zip
           unzip -q /tmp/xuci-toolhub-source.zip
           test -f xuci-toolhub/app/src/main/AndroidManifest.xml
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('xuci-toolhub/app/src/main/java/ai/xuci/toolhub/MainActivity.java')
+          s = p.read_text()
+          old = 'q(out + "/inspection.txt");";'
+          new = 'q(out + "/inspection.txt");'
+          if old not in s:
+              raise SystemExit('expected compile patch target not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
 
       - name: Build debug APK
         working-directory: xuci-toolhub
