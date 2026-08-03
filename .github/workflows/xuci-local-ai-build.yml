@@ -68,14 +68,14 @@ jobs:
           app = Path('source/examples/llama.android/app/build.gradle.kts')
           text = app.read_text()
           text = text.replace('applicationId = "com.example.llama.aichat"', 'applicationId = "ai.xuci.local"')
-          text = text.replace('minSdk = 33', 'minSdk = 28')
+          text = text.replace('minSdk = 33', 'minSdk = 30')
           text = text.replace('versionCode = 1', 'versionCode = 3')
           text = text.replace('versionName = "1.0"', 'versionName = "0.3.0-local-alpha"')
           app.write_text(text)
 
           lib = Path('source/examples/llama.android/lib/build.gradle.kts')
           text = lib.read_text()
-          text = text.replace('minSdk = 33', 'minSdk = 28')
+          text = text.replace('minSdk = 33', 'minSdk = 30')
           text = text.replace('abiFilters += listOf("arm64-v8a", "x86_64")', 'abiFilters += listOf("arm64-v8a")')
           lib.write_text(text)
           PY
