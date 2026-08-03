@@ -1,13 +1,8 @@
-name: Build xuci1.0 Alpha APK
+name: Build xuci1.0 Local Bridge APK
 
 on:
   push:
-    branches: [xuci-alpha-build]
-    paths:
-      - 'xuci1.0-alpha/**'
-      - '.github/workflows/xuci-alpha-build.yml'
-  pull_request:
-    branches: [main]
+    branches: [xuci-local-bridge-v1]
     paths:
       - 'xuci1.0-alpha/**'
       - '.github/workflows/xuci-alpha-build.yml'
@@ -47,13 +42,17 @@ jobs:
 
       - name: Verify artifact
         run: |
-          test -f xuci1.0-alpha/app/build/outputs/apk/debug/app-debug.apk
-          sha256sum xuci1.0-alpha/app/build/outputs/apk/debug/app-debug.apk
+          APK=xuci1.0-alpha/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          unzip -t "$APK"
+          sha256sum "$APK" | tee xuci1.0-alpha/app-debug.apk.sha256
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: xuci1.0-alpha-debug-apk
-          path: xuci1.0-alpha/app/build/outputs/apk/debug/app-debug.apk
+          name: xuci1.0-local-bridge-apk
+          path: |
+            xuci1.0-alpha/app/build/outputs/apk/debug/app-debug.apk
+            xuci1.0-alpha/app-debug.apk.sha256
           if-no-files-found: error
           retention-days: 14
