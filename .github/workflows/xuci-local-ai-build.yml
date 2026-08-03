@@ -67,7 +67,6 @@ jobs:
 
           app = Path('source/examples/llama.android/app/build.gradle.kts')
           text = app.read_text()
-          text = text.replace('namespace = "com.example.llama"', 'namespace = "com.example.llama"')
           text = text.replace('applicationId = "com.example.llama.aichat"', 'applicationId = "ai.xuci.local"')
           text = text.replace('minSdk = 33', 'minSdk = 28')
           text = text.replace('versionCode = 1', 'versionCode = 3')
@@ -86,8 +85,9 @@ jobs:
         env:
           GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx6g -Dfile.encoding=UTF-8
         run: |
+          set -o pipefail
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace :app:assembleDebug
+          ./gradlew --no-daemon --console=plain --stacktrace :app:assembleDebug 2>&1 | tee ../../../xuci-local-build.log
 
       - name: Validate APK
         run: |
@@ -99,6 +99,15 @@ jobs:
           sha256sum "$APK" | tee xuci1.0-local-alpha.apk.sha256
           cp "$APK" xuci1.0-local-alpha.apk
           stat --printf='%s\n' "$APK" > xuci1.0-local-alpha.apk.size
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci1.0-local-build-log
+          path: xuci-local-build.log
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
