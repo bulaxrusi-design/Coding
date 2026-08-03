@@ -24,6 +24,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Reconstruct ToolLab source
+        run: |
+          sha256sum xuci-toollab-build/chunks/*
+          cat xuci-toollab-build/chunks/* > /tmp/xuci-toollab.b64
+          base64 -d /tmp/xuci-toollab.b64 > /tmp/xuci-toollab.zip
+          sha256sum /tmp/xuci-toollab.zip
+          unzip -t /tmp/xuci-toollab.zip
+          unzip -oq /tmp/xuci-toollab.zip -d .
+          test -f xuci-toollab/app/src/main/java/ai/xuci/one/MainActivity.java
+          test -f xuci-toollab/app/src/main/assets/setup-xuci.sh
+          test -f xuci-toollab/app/build.gradle
+          bash -n xuci-toollab/app/src/main/assets/setup-xuci.sh
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -40,24 +53,6 @@ jobs:
 
       - name: Install Android platform
         run: yes | sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
-
-      - name: Reconstruct ToolLab source
-        run: |
-          cat xuci-toollab-build/chunks/* > /tmp/xuci-toollab.b64
-          base64 -d /tmp/xuci-toollab.b64 > /tmp/xuci-toollab.zip
-          sha256sum /tmp/xuci-toollab.zip
-          set +e
-          unzip -t /tmp/xuci-toollab.zip
-          TEST_RC=$?
-          unzip -oq /tmp/xuci-toollab.zip -d .
-          EXTRACT_RC=$?
-          set -e
-          test "$TEST_RC" -le 1
-          test "$EXTRACT_RC" -le 1
-          test -f xuci-toollab/app/src/main/java/ai/xuci/one/MainActivity.java
-          test -f xuci-toollab/app/src/main/assets/setup-xuci.sh
-          test -f xuci-toollab/app/build.gradle
-          bash -n xuci-toollab/app/src/main/assets/setup-xuci.sh
 
       - name: Build debug APK
         working-directory: xuci-toollab
