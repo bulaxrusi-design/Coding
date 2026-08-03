@@ -48,7 +48,15 @@ jobs:
         working-directory: source/xuci1.0-alpha
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
-      - name: Export build artifact
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci1.0-alpha-debug-apk
+          path: source/xuci1.0-alpha/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Export build metadata
         run: |
           set -euo pipefail
           APK='source/xuci1.0-alpha/app/build/outputs/apk/debug/app-debug.apk'
@@ -57,16 +65,17 @@ jobs:
           base64 -w0 "$APK" > artifact/xuci-build-output/xuci1.0-alpha-debug.apk.b64
           sha256sum "$APK" | awk '{print $1}' > artifact/xuci-build-output/xuci1.0-alpha-debug.apk.sha256
           stat --printf='%s\n' "$APK" > artifact/xuci-build-output/xuci1.0-alpha-debug.apk.size
+          printf '%s\n' '${{ github.run_id }}' > artifact/xuci-build-output/run-id.txt
           date -u +'%Y-%m-%dT%H:%M:%SZ' > artifact/xuci-build-output/built-at.txt
 
-      - name: Commit artifact to isolated branch
+      - name: Commit metadata to isolated branch
         working-directory: artifact
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add xuci-build-output
           if git diff --cached --quiet; then
-            echo 'Artifact is unchanged'
+            echo 'Artifact metadata is unchanged'
           else
             git commit -m 'build: xuci1.0 alpha debug APK'
             git push origin HEAD:xuci-alpha-artifact
