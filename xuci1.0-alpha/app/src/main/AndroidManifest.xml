@@ -5,10 +5,10 @@
 
     <application
         android:allowBackup="false"
-        android:label="xuci1.0"
+        android:label="xuci1.0 Local"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.NoActionBar"
-        android:usesCleartextTraffic="false">
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
