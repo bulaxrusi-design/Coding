@@ -4,8 +4,8 @@ on:
   push:
     branches: [xuci2-cloud-gemini]
     paths:
-      - 'xuci2_payload/**'
-      - 'xuci2_fix09/**'
+      - 'xuci2_exact_payload/**'
+      - 'xuci2_exact_tail/**'
       - '.github/workflows/xuci2-build.yml'
   pull_request:
     branches: [main]
@@ -39,23 +39,15 @@ jobs:
       - name: Install Android platform
         run: yes | sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Reconstruct source
+      - name: Reconstruct exact source
         run: |
           python3 - <<'PY'
           import base64, glob, hashlib
-          chunks = []
-          parts = []
-          for p in sorted(glob.glob('xuci2_fix09/part_*')):
-              raw = open(p, encoding='utf-8').read()
-              print(p, len(raw), hashlib.sha256(raw.encode()).hexdigest())
-              parts.append(raw)
-          fixed09 = ''.join(parts)
-          print('FIXED09', len(fixed09), hashlib.sha256(fixed09.encode()).hexdigest())
-          assert len(fixed09) == 4000
-          assert hashlib.sha256(fixed09.encode()).hexdigest() == '77b87846d1940d9f7c9706c1b1949b10025091f120f794f8bd0b033ff204079d'
-          for p in sorted(glob.glob('xuci2_payload/chunk_*')):
-              chunks.append(fixed09 if p.endswith('chunk_09') else open(p, encoding='utf-8').read())
-          data = base64.b64decode(''.join(chunks), validate=True)
+          paths = sorted(glob.glob('xuci2_exact_payload/part_*')) + sorted(glob.glob('xuci2_exact_tail/tail_*'))
+          assert len(paths) == 14, paths
+          encoded = ''.join(open(p, encoding='utf-8').read() for p in paths)
+          assert len(encoded) == 43816, len(encoded)
+          data = base64.b64decode(encoded, validate=True)
           digest = hashlib.sha256(data).hexdigest()
           print('ZIP_SHA256', digest, 'BYTES', len(data))
           assert digest == '8664d9722cd886ce8302838f38e617fd21abfcf574217194cf789d51338b3824'
