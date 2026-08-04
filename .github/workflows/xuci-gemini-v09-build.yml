@@ -4,7 +4,7 @@ on:
   push:
     branches: [xuci-gemini-v09]
     paths:
-      - 'xuci_gemini_v09_payload/**'
+      - 'xuci_gemini_v09_patch/**'
       - '.github/workflows/xuci-gemini-v09-build.yml'
   pull_request:
     branches: [main]
@@ -38,24 +38,37 @@ jobs:
       - name: Install Android platform
         run: yes | sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Reconstruct source
+      - name: Reconstruct verified source and apply 0.9 patch
         run: |
-          cat xuci_gemini_v09_payload/chunk_* | base64 -d > /tmp/xuci-gemini-v09-source.zip
-          echo 'c888085f03c8c53b9cb2d000d8690a01a99aa6cbf5f75f133ff6f3bee6625e4b  /tmp/xuci-gemini-v09-source.zip' | sha256sum -c -
-          unzip -t /tmp/xuci-gemini-v09-source.zip
-          unzip -q /tmp/xuci-gemini-v09-source.zip
-          test -f xuci_gemini_v09/app/src/main/java/ai/xuci/toolhub/AgentController.java
-          grep -q 'versionCode 9' xuci_gemini_v09/app/build.gradle
-          grep -q 'generateContent' xuci_gemini_v09/app/src/main/java/ai/xuci/toolhub/AgentController.java
-          ! grep -q 'httpie' xuci_gemini_v09/app/src/main/java/ai/xuci/toolhub/MainActivity.java
+          cat xuci_toolhub_payload/chunk_* | base64 -d > /tmp/xuci-toolhub-source.zip
+          unzip -t /tmp/xuci-toolhub-source.zip
+          unzip -q /tmp/xuci-toolhub-source.zip
+
+          cat xuci_agent_patch/chunk_* | base64 -d > /tmp/xuci-agent-v07-patch.zip
+          unzip -t /tmp/xuci-agent-v07-patch.zip
+          unzip -qo /tmp/xuci-agent-v07-patch.zip -d xuci-toolhub
+
+          cat xuci_gemini_patch/chunk_* | base64 -d > /tmp/xuci-gemini-v08-patch.zip
+          unzip -t /tmp/xuci-gemini-v08-patch.zip
+          unzip -qo /tmp/xuci-gemini-v08-patch.zip -d xuci-toolhub
+
+          cat xuci_gemini_v09_patch/chunk_* | base64 -d > /tmp/xuci-gemini-v09-patch.zip
+          echo '907b9052a812a2f9408588ebf2505bf0c1d7e3b2b201cfacc2d8fe24dcd39957  /tmp/xuci-gemini-v09-patch.zip' | sha256sum -c -
+          unzip -t /tmp/xuci-gemini-v09-patch.zip
+          unzip -qo /tmp/xuci-gemini-v09-patch.zip -d xuci-toolhub
+
+          test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java
+          grep -q 'versionCode 9' xuci-toolhub/app/build.gradle
+          grep -q 'generateContent' xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java
+          ! grep -q 'httpie' xuci-toolhub/app/src/main/java/ai/xuci/toolhub/MainActivity.java
 
       - name: Build debug APK
-        working-directory: xuci_gemini_v09
+        working-directory: xuci-toolhub
         run: gradle --no-daemon --stacktrace :app:assembleDebug
 
       - name: Verify and stage APK
         run: |
-          APK=xuci_gemini_v09/app/build/outputs/apk/debug/app-debug.apk
+          APK=xuci-toolhub/app/build/outputs/apk/debug/app-debug.apk
           test -f "$APK"
           unzip -t "$APK"
           mkdir -p dist
