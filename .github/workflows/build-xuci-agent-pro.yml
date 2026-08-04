@@ -65,6 +65,8 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
 
       - name: Android 30 launch smoke test
+        id: smoke
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
@@ -72,22 +74,28 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: |
-            set -euo pipefail
+            mkdir -p artifact/smoke
             APK=xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk
-            adb install -r "$APK"
-            adb logcat -c
-            adb shell am start -W -n ai.xuci.agent.debug/ai.xuci.agent.MainActivity
+            STATUS=0
+            adb install -r "$APK" > artifact/smoke/install.txt 2>&1 || STATUS=1
+            adb logcat -c || true
+            adb shell am start -W -n ai.xuci.agent.debug/ai.xuci.agent.MainActivity > artifact/smoke/start.txt 2>&1 || STATUS=1
             sleep 5
-            PID=$(adb shell pidof ai.xuci.agent.debug | tr -d '\r')
-            test -n "$PID"
-            adb shell dumpsys activity activities | grep -q 'ai.xuci.agent.debug/ai.xuci.agent.MainActivity'
-            if adb logcat -d -b crash | grep -q 'ai.xuci.agent.debug'; then
-              adb logcat -d -b crash
-              exit 1
-            fi
-            echo "launch smoke test passed; pid=$PID"
+            adb shell pidof ai.xuci.agent.debug > artifact/smoke/pid.txt 2>&1 || true
+            adb shell dumpsys activity activities > artifact/smoke/activities.txt 2>&1 || true
+            adb logcat -d -b crash > artifact/smoke/crash.txt 2>&1 || true
+            adb logcat -d '*:E' > artifact/smoke/errors.txt 2>&1 || true
+            PID=$(tr -d '\r\n ' < artifact/smoke/pid.txt)
+            test -n "$PID" || STATUS=1
+            grep -q 'ai.xuci.agent.debug/ai.xuci.agent.MainActivity' artifact/smoke/activities.txt || STATUS=1
+            if grep -q 'ai.xuci.agent.debug' artifact/smoke/crash.txt; then STATUS=1; fi
+            echo "$STATUS" > artifact/smoke/result.txt
+            cat artifact/smoke/start.txt
+            cat artifact/smoke/crash.txt
+            exit "$STATUS"
 
       - name: Prepare artifact
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
@@ -96,11 +104,19 @@ jobs:
           sha256sum artifact/Xuci-Agent-Pro-v3-source-build.apk | tee artifact/SHA256SUMS.txt
           tar -czf artifact/Xuci-Agent-Pro-v3-source.tar.gz -C xuci-agent-pro .
           cp xuci-agent-pro/README.md artifact/README.md
+          echo "smoke-outcome=${{ steps.smoke.outcome }}" > artifact/SMOKE_STATUS.txt
 
-      - name: Upload APK and source
+      - name: Upload APK, source, and smoke diagnostics
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: xuci-agent-pro-v3-apk
           path: artifact/
           if-no-files-found: error
           retention-days: 30
+
+      - name: Enforce launch gate
+        if: steps.smoke.outcome != 'success'
+        run: |
+          echo "Android launch smoke test failed. APK is not releasable."
+          exit 1
