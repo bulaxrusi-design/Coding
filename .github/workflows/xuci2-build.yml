@@ -40,25 +40,20 @@ jobs:
 
       - name: Reconstruct source
         run: |
-          wc -c xuci2_payload/chunk_*
-          sha256sum xuci2_payload/chunk_*
           python3 - <<'PY'
           import base64, glob, hashlib
-          paths = sorted(glob.glob('xuci2_payload/chunk_*'))
           chunks = []
-          allowed = set('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=')
-          for p in paths:
+          for p in sorted(glob.glob('xuci2_payload/chunk_*')):
               raw = open(p, encoding='utf-8').read()
-              bad = sorted(set(raw) - allowed)
-              print(f'CHUNK {p}: chars={len(raw)} sha256={hashlib.sha256(raw.encode()).hexdigest()} bad={bad!r}')
+              if p.endswith('chunk_09'):
+                  raw = raw[:4000]
               chunks.append(raw)
-          text = ''.join(chunks)
-          print('COMBINED_CHARS', len(text))
-          data = base64.b64decode(text, validate=True)
-          print('ZIP_SHA256', hashlib.sha256(data).hexdigest(), 'BYTES', len(data))
+          data = base64.b64decode(''.join(chunks), validate=True)
+          digest = hashlib.sha256(data).hexdigest()
+          print('ZIP_SHA256', digest, 'BYTES', len(data))
+          assert digest == '8664d9722cd886ce8302838f38e617fd21abfcf574217194cf789d51338b3824'
           open('/tmp/xuci2-source.zip', 'wb').write(data)
           PY
-          test "$(sha256sum /tmp/xuci2-source.zip | cut -d' ' -f1)" = "8664d9722cd886ce8302838f38e617fd21abfcf574217194cf789d51338b3824"
           unzip -t /tmp/xuci2-source.zip
           unzip -q /tmp/xuci2-source.zip
           test -f xuci2/app/src/main/java/ai/xuci/two/MainActivity.java
