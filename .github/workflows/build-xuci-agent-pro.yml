@@ -3,10 +3,6 @@ name: Build Xuci Agent Pro
 on:
   pull_request:
     branches: [ main ]
-    paths:
-      - 'xuci-agent-pro-v3-source.tar.gz.b64'
-      - 'XUCI_AGENT_PRO_V3.md'
-      - '.github/workflows/build-xuci-agent-pro.yml'
   workflow_dispatch:
 
 permissions:
@@ -15,17 +11,22 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Unpack source project
+      - name: Reconstruct and verify source project
+        shell: bash
         run: |
+          set -euo pipefail
+          cat xuci-agent-pro-v3-packed/part-*.b64 > /tmp/xuci-source.tar.gz.b64
+          echo "a5864c50c871be8f2780cb808b6063e18ee2fb2e76d55b2d3d333c30ae7e5a3a  /tmp/xuci-source.tar.gz.b64" | sha256sum -c -
+          base64 --decode /tmp/xuci-source.tar.gz.b64 > /tmp/xuci-source.tar.gz
+          echo "27c739fcfd393a8b04989d5283d589bd02a422d8fe11df8e819895a252714380  /tmp/xuci-source.tar.gz" | sha256sum -c -
           mkdir -p xuci-agent-pro
-          base64 --decode xuci-agent-pro-v3-source.tar.gz.b64 > /tmp/xuci-agent-pro-v3-source.tar.gz
-          tar -xzf /tmp/xuci-agent-pro-v3-source.tar.gz -C xuci-agent-pro
+          tar -xzf /tmp/xuci-source.tar.gz -C xuci-agent-pro
           test -f xuci-agent-pro/app/src/main/java/ai/xuci/agent/MainActivity.java
 
       - name: Set up Java 17
@@ -38,6 +39,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android SDK packages
+        shell: bash
         run: |
           yes | sdkmanager --licenses >/dev/null || true
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
@@ -47,15 +49,25 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build debug APK from source
+      - name: Build debug APK from clean source
         run: gradle -p xuci-agent-pro :app:assembleDebug --stacktrace
 
+      - name: Verify APK archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+
       - name: Prepare artifact
+        shell: bash
         run: |
           mkdir -p artifact
-          cp xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk artifact/Xuci-Agent-Pro-v3-debug.apk
-          sha256sum artifact/Xuci-Agent-Pro-v3-debug.apk | tee artifact/SHA256SUMS.txt
-          cp /tmp/xuci-agent-pro-v3-source.tar.gz artifact/Xuci-Agent-Pro-v3-source.tar.gz
+          cp xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk artifact/Xuci-Agent-Pro-v3-source-build.apk
+          sha256sum artifact/Xuci-Agent-Pro-v3-source-build.apk | tee artifact/SHA256SUMS.txt
+          cp /tmp/xuci-source.tar.gz artifact/Xuci-Agent-Pro-v3-source.tar.gz
           cp xuci-agent-pro/README.md artifact/README.md
 
       - name: Upload APK and source
