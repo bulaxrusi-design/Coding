@@ -5,6 +5,7 @@ on:
     branches: [xuci2-cloud-gemini]
     paths:
       - 'xuci2_payload/**'
+      - 'xuci2_fix09/**'
       - '.github/workflows/xuci2-build.yml'
   pull_request:
     branches: [main]
@@ -43,11 +44,11 @@ jobs:
           python3 - <<'PY'
           import base64, glob, hashlib
           chunks = []
+          fixed09 = ''.join(open(p, encoding='utf-8').read() for p in sorted(glob.glob('xuci2_fix09/part_*')))
+          assert len(fixed09) == 4000
+          assert hashlib.sha256(fixed09.encode()).hexdigest() == '77b87846d1940d9f7c9706c1b1949b10025091f120f794f8bd0b033ff204079d'
           for p in sorted(glob.glob('xuci2_payload/chunk_*')):
-              raw = open(p, encoding='utf-8').read()
-              if p.endswith('chunk_09'):
-                  raw = raw[:4000]
-              chunks.append(raw)
+              chunks.append(fixed09 if p.endswith('chunk_09') else open(p, encoding='utf-8').read())
           data = base64.b64decode(''.join(chunks), validate=True)
           digest = hashlib.sha256(data).hexdigest()
           print('ZIP_SHA256', digest, 'BYTES', len(data))
