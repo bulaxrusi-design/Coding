@@ -40,7 +40,7 @@ jobs:
 
       - name: Reconstruct source
         run: |
-          cat xuci2_payload/chunk_* | base64 -d > /tmp/xuci2-source.zip
+          cat xuci2_payload/chunk_* | tr -cd 'A-Za-z0-9+/=' | base64 -d > /tmp/xuci2-source.zip
           sha256sum /tmp/xuci2-source.zip
           test "$(sha256sum /tmp/xuci2-source.zip | cut -d' ' -f1)" = "8664d9722cd886ce8302838f38e617fd21abfcf574217194cf789d51338b3824"
           unzip -t /tmp/xuci2-source.zip
