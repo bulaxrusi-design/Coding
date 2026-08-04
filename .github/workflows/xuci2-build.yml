@@ -6,6 +6,8 @@ on:
     paths:
       - 'xuci2_payload/**'
       - '.github/workflows/xuci2-build.yml'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
