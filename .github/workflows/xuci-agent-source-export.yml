@@ -3,6 +3,8 @@ name: Export xuci Tool Hub source
 on:
   push:
     branches: [xuci-agent-v07]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
