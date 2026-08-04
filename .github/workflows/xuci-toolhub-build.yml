@@ -1,10 +1,11 @@
-name: Build xuci1.0 Tool Hub APK
+name: Build xuci1.0 Autonomous Agent APK
 
 on:
   push:
-    branches: [xuci-toolhub-v06]
+    branches: [xuci-agent-v07]
     paths:
       - 'xuci_toolhub_payload/**'
+      - 'xuci_agent_patch/**'
       - '.github/workflows/xuci-toolhub-build.yml'
   pull_request:
     branches: [main]
@@ -16,7 +17,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -38,22 +39,17 @@ jobs:
       - name: Install Android platform
         run: yes | sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
 
-      - name: Reconstruct and patch Tool Hub source
+      - name: Reconstruct source and apply Agent 0.7 patch
         run: |
           cat xuci_toolhub_payload/chunk_* | base64 -d > /tmp/xuci-toolhub-source.zip
           unzip -t /tmp/xuci-toolhub-source.zip
           unzip -q /tmp/xuci-toolhub-source.zip
-          test -f xuci-toolhub/app/src/main/AndroidManifest.xml
-          python3 - <<'PY'
-          from pathlib import Path
-          p = Path('xuci-toolhub/app/src/main/java/ai/xuci/toolhub/MainActivity.java')
-          s = p.read_text()
-          old = 'q(out + "/inspection.txt");";'
-          new = 'q(out + "/inspection.txt");'
-          if old not in s:
-              raise SystemExit('expected compile patch target not found')
-          p.write_text(s.replace(old, new, 1))
-          PY
+          cat xuci_agent_patch/chunk_* | base64 -d > /tmp/xuci-agent-v07-patch.zip
+          unzip -t /tmp/xuci-agent-v07-patch.zip
+          unzip -qo /tmp/xuci-agent-v07-patch.zip -d xuci-toolhub
+          test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java
+          test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/ToolRegistry.java
+          grep -q "versionCode 7" xuci-toolhub/app/build.gradle
 
       - name: Build debug APK
         working-directory: xuci-toolhub
@@ -65,14 +61,14 @@ jobs:
           test -f "$APK"
           unzip -t "$APK"
           mkdir -p dist
-          cp "$APK" dist/xuci1.0-toolhub-v0.6-debug.apk
-          sha256sum dist/xuci1.0-toolhub-v0.6-debug.apk | tee dist/xuci1.0-toolhub-v0.6-debug.apk.sha256
+          cp "$APK" dist/xuci1.0-agent-v0.7-debug.apk
+          sha256sum dist/xuci1.0-agent-v0.7-debug.apk | tee dist/xuci1.0-agent-v0.7-debug.apk.sha256
           unzip -l "$APK" | grep -E 'AndroidManifest.xml|classes.dex|resources.arsc'
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: xuci1.0-toolhub-apk
+          name: xuci1.0-agent-v07-apk
           path: dist/*
           if-no-files-found: error
           retention-days: 14
