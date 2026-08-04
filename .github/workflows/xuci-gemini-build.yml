@@ -52,6 +52,19 @@ jobs:
           unzip -t /tmp/xuci-gemini-v08-patch.zip
           unzip -qo /tmp/xuci-gemini-v08-patch.zip -d xuci-toolhub
 
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java')
+          s = p.read_text()
+          old = 'return new Action("tool", "apk_full_decompile", "APK-ს ვხსნი და სრულ სამუშაო სივრცეს ვქმნი.", "", new JSONObject().put("path", attachments.get(0)));'
+          new = '''JSONObject fallbackArgs = new JSONObject();
+                      try { fallbackArgs.put("path", attachments.get(0)); } catch (Exception ignored) { }
+                      return new Action("tool", "apk_full_decompile", "APK-ს ვხსნი და სრულ სამუშაო სივრცეს ვქმნი.", "", fallbackArgs);'''
+          if old not in s:
+              raise SystemExit('Expected fallback line was not found')
+          p.write_text(s.replace(old, new))
+          PY
+
           test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/SecretStore.java
           test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java
           grep -q 'versionCode 8' xuci-toolhub/app/build.gradle
