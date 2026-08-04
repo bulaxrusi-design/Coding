@@ -44,7 +44,13 @@ jobs:
           python3 - <<'PY'
           import base64, glob, hashlib
           chunks = []
-          fixed09 = ''.join(open(p, encoding='utf-8').read() for p in sorted(glob.glob('xuci2_fix09/part_*')))
+          parts = []
+          for p in sorted(glob.glob('xuci2_fix09/part_*')):
+              raw = open(p, encoding='utf-8').read()
+              print(p, len(raw), hashlib.sha256(raw.encode()).hexdigest())
+              parts.append(raw)
+          fixed09 = ''.join(parts)
+          print('FIXED09', len(fixed09), hashlib.sha256(fixed09.encode()).hexdigest())
           assert len(fixed09) == 4000
           assert hashlib.sha256(fixed09.encode()).hexdigest() == '77b87846d1940d9f7c9706c1b1949b10025091f120f794f8bd0b033ff204079d'
           for p in sorted(glob.glob('xuci2_payload/chunk_*')):
