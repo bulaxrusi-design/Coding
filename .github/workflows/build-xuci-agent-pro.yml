@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
 
     steps:
       - name: Checkout
@@ -28,7 +28,9 @@ jobs:
           echo "27c739fcfd393a8b04989d5283d589bd02a422d8fe11df8e819895a252714380  /tmp/xuci-source.tar.gz" | sha256sum -c -
           mkdir -p xuci-agent-pro
           tar -xzf /tmp/xuci-source.tar.gz -C xuci-agent-pro
+          python3 xuci-agent-pro-v3-fixes.py xuci-agent-pro
           test -f xuci-agent-pro/app/src/main/java/ai/xuci/agent/MainActivity.java
+          grep -q 'androidx.appcompat.app.AlertDialog' xuci-agent-pro/app/src/main/java/ai/xuci/agent/MainActivity.java
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -53,7 +55,7 @@ jobs:
       - name: Build debug APK from clean source
         run: gradle -p xuci-agent-pro :app:assembleDebug --stacktrace
 
-      - name: Verify APK archive
+      - name: Verify APK archive and signature
         shell: bash
         run: |
           set -euo pipefail
@@ -62,13 +64,37 @@ jobs:
           unzip -t "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
 
+      - name: Android 30 launch smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK=xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r "$APK"
+            adb logcat -c
+            adb shell am start -W -n ai.xuci.agent.debug/ai.xuci.agent.MainActivity
+            sleep 5
+            PID=$(adb shell pidof ai.xuci.agent.debug | tr -d '\r')
+            test -n "$PID"
+            adb shell dumpsys activity activities | grep -q 'ai.xuci.agent.debug/ai.xuci.agent.MainActivity'
+            if adb logcat -d -b crash | grep -q 'ai.xuci.agent.debug'; then
+              adb logcat -d -b crash
+              exit 1
+            fi
+            echo "launch smoke test passed; pid=$PID"
+
       - name: Prepare artifact
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p artifact
           cp xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk artifact/Xuci-Agent-Pro-v3-source-build.apk
           sha256sum artifact/Xuci-Agent-Pro-v3-source-build.apk | tee artifact/SHA256SUMS.txt
-          cp /tmp/xuci-source.tar.gz artifact/Xuci-Agent-Pro-v3-source.tar.gz
+          tar -czf artifact/Xuci-Agent-Pro-v3-source.tar.gz -C xuci-agent-pro .
           cp xuci-agent-pro/README.md artifact/README.md
 
       - name: Upload APK and source
