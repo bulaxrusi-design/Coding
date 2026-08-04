@@ -1,0 +1,79 @@
+name: Build xuci1.0 Gemini Agent APK
+
+on:
+  push:
+    branches: [xuci-gemini-v08]
+    paths:
+      - 'xuci_gemini_patch/**'
+      - '.github/workflows/xuci-gemini-build.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: yes | sdkmanager 'platforms;android-36' 'build-tools;35.0.0' 'platform-tools'
+
+      - name: Reconstruct source and apply Gemini 0.8 patch
+        run: |
+          cat xuci_toolhub_payload/chunk_* | base64 -d > /tmp/xuci-toolhub-source.zip
+          unzip -t /tmp/xuci-toolhub-source.zip
+          unzip -q /tmp/xuci-toolhub-source.zip
+
+          cat xuci_agent_patch/chunk_* | base64 -d > /tmp/xuci-agent-v07-patch.zip
+          unzip -t /tmp/xuci-agent-v07-patch.zip
+          unzip -qo /tmp/xuci-agent-v07-patch.zip -d xuci-toolhub
+
+          cat xuci_gemini_patch/chunk_* | base64 -d > /tmp/xuci-gemini-v08-patch.zip
+          unzip -t /tmp/xuci-gemini-v08-patch.zip
+          unzip -qo /tmp/xuci-gemini-v08-patch.zip -d xuci-toolhub
+
+          test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/SecretStore.java
+          test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java
+          grep -q 'versionCode 8' xuci-toolhub/app/build.gradle
+
+      - name: Build debug APK
+        working-directory: xuci-toolhub
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify and stage APK
+        run: |
+          APK=xuci-toolhub/app/build/outputs/apk/debug/app-debug.apk
+          test -f "$APK"
+          unzip -t "$APK"
+          mkdir -p dist
+          cp "$APK" dist/xuci1.0-gemini-agent-v0.8-debug.apk
+          sha256sum dist/xuci1.0-gemini-agent-v0.8-debug.apk | tee dist/xuci1.0-gemini-agent-v0.8-debug.apk.sha256
+          unzip -l "$APK" | grep -E 'AndroidManifest.xml|classes.dex|resources.arsc'
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci1.0-gemini-agent-v08-apk
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
