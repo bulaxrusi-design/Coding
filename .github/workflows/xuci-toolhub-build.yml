@@ -47,6 +47,16 @@ jobs:
           cat xuci_agent_patch/chunk_* | base64 -d > /tmp/xuci-agent-v07-patch.zip
           unzip -t /tmp/xuci-agent-v07-patch.zip
           unzip -qo /tmp/xuci-agent-v07-patch.zip -d xuci-toolhub
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java')
+          s = p.read_text(encoding='utf-8')
+          old = 'return new Action("tool", "apk_full_decompile", "APK-ს სრულად ვამუშავებ JADX-ითა და Apktool-ით.", "", new JSONObject().put("path", attachments.get(0)));'
+          new = 'JSONObject fallbackArgs = new JSONObject();\n            try { fallbackArgs.put("path", attachments.get(0)); } catch (Exception ignored) { }\n            return new Action("tool", "apk_full_decompile", "APK-ს სრულად ვამუშავებ JADX-ითა და Apktool-ით.", "", fallbackArgs);'
+          if old not in s:
+              raise SystemExit('Agent fallback compile patch target not found')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
           test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/AgentController.java
           test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/ToolRegistry.java
           grep -q "versionCode 7" xuci-toolhub/app/build.gradle
