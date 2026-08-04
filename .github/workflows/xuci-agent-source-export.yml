@@ -1,0 +1,27 @@
+name: Export xuci Tool Hub source
+
+on:
+  push:
+    branches: [xuci-agent-v07]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruct source
+        run: |
+          cat xuci_toolhub_payload/chunk_* | base64 -d > /tmp/xuci-toolhub-source.zip
+          unzip -q /tmp/xuci-toolhub-source.zip
+          test -f xuci-toolhub/app/src/main/java/ai/xuci/toolhub/MainActivity.java
+      - name: Upload source
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci-toolhub-source
+          path: xuci-toolhub
+          if-no-files-found: error
+          retention-days: 2
