@@ -21,7 +21,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          wc -c xuci-agent-pro-v3-packed/part-*.b64
+          sha256sum xuci-agent-pro-v3-packed/part-*.b64
           cat xuci-agent-pro-v3-packed/part-*.b64 > /tmp/xuci-source.tar.gz.b64
+          sha256sum /tmp/xuci-source.tar.gz.b64
           echo "a5864c50c871be8f2780cb808b6063e18ee2fb2e76d55b2d3d333c30ae7e5a3a  /tmp/xuci-source.tar.gz.b64" | sha256sum -c -
           base64 --decode /tmp/xuci-source.tar.gz.b64 > /tmp/xuci-source.tar.gz
           echo "27c739fcfd393a8b04989d5283d589bd02a422d8fe11df8e819895a252714380  /tmp/xuci-source.tar.gz" | sha256sum -c -
