@@ -1,0 +1,122 @@
+name: Build Xuci Agent Pro
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruct and verify source project
+        shell: bash
+        run: |
+          set -euo pipefail
+          head -c 3500 xuci-agent-pro-v3-packed/part-00.b64 > /tmp/xuci-source.tar.gz.b64
+          cat xuci-agent-pro-v3-packed/part-0{1,2,3,4,5,6,7,8,9}.b64 >> /tmp/xuci-source.tar.gz.b64
+          echo "a5864c50c871be8f2780cb808b6063e18ee2fb2e76d55b2d3d333c30ae7e5a3a  /tmp/xuci-source.tar.gz.b64" | sha256sum -c -
+          base64 --decode /tmp/xuci-source.tar.gz.b64 > /tmp/xuci-source.tar.gz
+          echo "27c739fcfd393a8b04989d5283d589bd02a422d8fe11df8e819895a252714380  /tmp/xuci-source.tar.gz" | sha256sum -c -
+          mkdir -p xuci-agent-pro
+          tar -xzf /tmp/xuci-source.tar.gz -C xuci-agent-pro
+          python3 xuci-agent-pro-v3-fixes.py xuci-agent-pro
+          test -f xuci-agent-pro/app/src/main/java/ai/xuci/agent/MainActivity.java
+          grep -q 'androidx.appcompat.app.AlertDialog' xuci-agent-pro/app/src/main/java/ai/xuci/agent/MainActivity.java
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        shell: bash
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build debug APK from clean source
+        run: gradle -p xuci-agent-pro :app:assembleDebug --stacktrace
+
+      - name: Verify APK archive and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          unzip -t "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK"
+
+      - name: Android 30 launch smoke test
+        id: smoke
+        continue-on-error: true
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          script: |
+            mkdir -p artifact/smoke
+            APK=xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk
+            STATUS=0
+            adb install -r "$APK" > artifact/smoke/install.txt 2>&1 || STATUS=1
+            adb logcat -c || true
+            adb shell am start -W -n ai.xuci.agent.debug/ai.xuci.agent.MainActivity > artifact/smoke/start.txt 2>&1 || STATUS=1
+            sleep 5
+            adb shell pidof ai.xuci.agent.debug > artifact/smoke/pid.txt 2>&1 || true
+            adb shell dumpsys activity activities > artifact/smoke/activities.txt 2>&1 || true
+            adb logcat -d -b crash > artifact/smoke/crash.txt 2>&1 || true
+            adb logcat -d '*:E' > artifact/smoke/errors.txt 2>&1 || true
+            PID=$(tr -d '\r\n ' < artifact/smoke/pid.txt)
+            test -n "$PID" || STATUS=1
+            grep -q 'ai.xuci.agent.debug/ai.xuci.agent.MainActivity' artifact/smoke/activities.txt || STATUS=1
+            if grep -q 'ai.xuci.agent.debug' artifact/smoke/crash.txt; then STATUS=1; fi
+            echo "$STATUS" > artifact/smoke/result.txt
+            cat artifact/smoke/start.txt
+            cat artifact/smoke/crash.txt
+            exit "$STATUS"
+
+      - name: Prepare artifact
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifact
+          cp xuci-agent-pro/app/build/outputs/apk/debug/app-debug.apk artifact/Xuci-Agent-Pro-v3-source-build.apk
+          sha256sum artifact/Xuci-Agent-Pro-v3-source-build.apk | tee artifact/SHA256SUMS.txt
+          tar -czf artifact/Xuci-Agent-Pro-v3-source.tar.gz -C xuci-agent-pro .
+          cp xuci-agent-pro/README.md artifact/README.md
+          echo "smoke-outcome=${{ steps.smoke.outcome }}" > artifact/SMOKE_STATUS.txt
+
+      - name: Upload APK, source, and smoke diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xuci-agent-pro-v3-apk
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce launch gate
+        if: steps.smoke.outcome != 'success'
+        run: |
+          echo "Android launch smoke test failed. APK is not releasable."
+          exit 1
