@@ -34,7 +34,7 @@ public final class ScreenCaptureService extends Service {
     private static final String CHANNEL = "ursafe_screen_observer";
     private static final int NOTIFICATION_ID = 6500;
     private static final long FRAME_INTERVAL_MS = 80L;
-    private static final long JPEG_INTERVAL_MS = 280L;
+    private static final long JPEG_INTERVAL_MS = 420L;
     private static volatile boolean active;
 
     private MediaProjection projection;
@@ -45,6 +45,8 @@ public final class ScreenCaptureService extends Service {
     private long lastProcessedMs;
     private long lastJpegMs;
     private byte[] previousLuma;
+    private int sourceWidth;
+    private int sourceHeight;
 
     public static void start(Context context, int resultCode, Intent data) {
         Intent intent = new Intent(context, ScreenCaptureService.class)
@@ -71,6 +73,7 @@ public final class ScreenCaptureService extends Service {
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
         if (intent == null) return START_NOT_STICKY;
         if (ACTION_STOP.equals(intent.getAction())) {
+            NumberMatchAgent.stop(this);
             shutdown();
             stopSelf();
             return START_NOT_STICKY;
@@ -94,7 +97,8 @@ public final class ScreenCaptureService extends Service {
             startProjection(resultCode, resultData);
             return START_STICKY;
         } catch (Exception error) {
-            BridgeNotifications.showMessage(this, "Screen observer შეცდომა", String.valueOf(error.getMessage()), 6501);
+            BridgeNotifications.showMessage(this, "Screen observer შეცდომა",
+                    String.valueOf(error.getMessage()), 6501);
             shutdown();
             stopSelf();
             return START_NOT_STICKY;
@@ -116,13 +120,14 @@ public final class ScreenCaptureService extends Service {
         Notification notification = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_ursafe_logo)
                 .setContentTitle("Ursafe ეკრანს ადგილობრივად აკვირდება")
-                .setContentText("კადრები მხოლოდ დამტკიცებული მოთხოვნით ბრუნდება")
+                .setContentText("Number Match დამუშავება ტელეფონზევე ხდება")
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .addAction(new Notification.Action.Builder(0, "შეჩერება", stopIntent).build())
                 .build();
         if (Build.VERSION.SDK_INT >= 29) {
-            startForeground(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
+            startForeground(NOTIFICATION_ID, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         } else {
             startForeground(NOTIFICATION_ID, notification);
         }
@@ -137,6 +142,7 @@ public final class ScreenCaptureService extends Service {
         projection.registerCallback(new MediaProjection.Callback() {
             @Override public void onStop() {
                 worker.post(() -> {
+                    NumberMatchAgent.stop(ScreenCaptureService.this);
                     shutdownProjectionOnly();
                     stopSelf();
                 });
@@ -146,13 +152,15 @@ public final class ScreenCaptureService extends Service {
         DisplayMetrics metrics = new DisplayMetrics();
         WindowManager window = (WindowManager) getSystemService(WINDOW_SERVICE);
         window.getDefaultDisplay().getRealMetrics(metrics);
-        int sourceWidth = Math.max(1, metrics.widthPixels);
-        int sourceHeight = Math.max(1, metrics.heightPixels);
+        sourceWidth = Math.max(1, metrics.widthPixels);
+        sourceHeight = Math.max(1, metrics.heightPixels);
         ScreenFrameStore.setScreenSize(sourceWidth, sourceHeight);
         int captureWidth = Math.min(720, sourceWidth);
-        int captureHeight = Math.max(1, Math.round(sourceHeight * (captureWidth / (float) sourceWidth)));
+        int captureHeight = Math.max(1,
+                Math.round(sourceHeight * (captureWidth / (float) sourceWidth)));
 
-        imageReader = ImageReader.newInstance(captureWidth, captureHeight, PixelFormat.RGBA_8888, 2);
+        imageReader = ImageReader.newInstance(captureWidth, captureHeight,
+                PixelFormat.RGBA_8888, 2);
         imageReader.setOnImageAvailableListener(this::onImageAvailable, worker);
         virtualDisplay = projection.createVirtualDisplay(
                 "UrsafeLocalObserver",
@@ -174,12 +182,14 @@ public final class ScreenCaptureService extends Service {
             long now = System.currentTimeMillis();
             if (now - lastProcessedMs < FRAME_INTERVAL_MS) return;
             lastProcessedMs = now;
+
             Image.Plane plane = image.getPlanes()[0];
             ByteBuffer buffer = plane.getBuffer();
             int rowStride = plane.getRowStride();
             int pixelStride = plane.getPixelStride();
             int width = image.getWidth();
             int height = image.getHeight();
+
             final int gridW = 64;
             final int gridH = 36;
             byte[] current = new byte[gridW * gridH];
@@ -205,10 +215,15 @@ public final class ScreenCaptureService extends Service {
             previousLuma = current;
             ScreenFrameStore.update(motion, now);
 
+            NumberMatchAgent.onFrame(buffer, rowStride, pixelStride, width, height,
+                    sourceWidth, sourceHeight, now);
+
             if (now - lastJpegMs >= JPEG_INTERVAL_MS) {
                 lastJpegMs = now;
                 byte[] jpeg = encodeCompactJpeg(buffer, rowStride, pixelStride, width, height);
-                if (jpeg != null && jpeg.length > 0) ScreenFrameStore.updateJpeg(jpeg, now);
+                if (jpeg != null && jpeg.length > 0) {
+                    ScreenFrameStore.updateJpeg(jpeg, now);
+                }
             }
         } catch (Exception ignored) {
             // Frame drops are expected under load and must not stop the observer.
@@ -228,22 +243,14 @@ public final class ScreenCaptureService extends Service {
             source.rewind();
             padded.copyPixelsFromBuffer(source);
             cropped = Bitmap.createBitmap(padded, 0, 0, width, height);
-            int targetWidth = Math.min(540, width);
-            int targetHeight = Math.max(1, Math.round(height * (targetWidth / (float) width)));
+            int targetWidth = Math.min(480, width);
+            int targetHeight = Math.max(1,
+                    Math.round(height * (targetWidth / (float) width)));
             compact = targetWidth == width ? cropped
                     : Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true);
-            ByteArrayOutputStream output = new ByteArrayOutputStream(96_000);
-            compact.compress(Bitmap.CompressFormat.JPEG, 62, output);
-            byte[] data = output.toByteArray();
-            if (data.length > 220_000 && targetWidth > 360) {
-                Bitmap smaller = Bitmap.createScaledBitmap(cropped, 360,
-                        Math.max(1, Math.round(height * (360f / width))), true);
-                output.reset();
-                smaller.compress(Bitmap.CompressFormat.JPEG, 55, output);
-                data = output.toByteArray();
-                smaller.recycle();
-            }
-            return data;
+            ByteArrayOutputStream output = new ByteArrayOutputStream(80_000);
+            compact.compress(Bitmap.CompressFormat.JPEG, 58, output);
+            return output.toByteArray();
         } finally {
             if (compact != null && compact != cropped) compact.recycle();
             if (cropped != null) cropped.recycle();
@@ -274,6 +281,7 @@ public final class ScreenCaptureService extends Service {
     }
 
     @Override public void onDestroy() {
+        NumberMatchAgent.stop(this);
         shutdown();
         if (workerThread != null) workerThread.quitSafely();
         super.onDestroy();
