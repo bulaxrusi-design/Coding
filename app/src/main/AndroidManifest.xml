@@ -38,6 +38,7 @@
             </intent-filter>
         </activity>
 
+        <activity android:name=".AgentActivityV12" android:exported="false" />
         <activity android:name=".AgentActivityV08" android:exported="false" />
         <activity
             android:name=".ScreenConsentActivity"
