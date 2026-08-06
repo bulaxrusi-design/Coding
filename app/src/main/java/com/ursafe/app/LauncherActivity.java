@@ -76,7 +76,7 @@ public final class LauncherActivity extends Activity {
         continuing = true;
         try { BridgeForegroundService.start(this); }
         catch (Exception error) { Toast.makeText(this, "Bridge ვერ გაეშვა: " + safe(error.getMessage()), Toast.LENGTH_LONG).show(); }
-        startActivity(new Intent(this, UrsafeActivityV07.class));
+        startActivity(new Intent(this, BridgeActivity.class));
         finish();
     }
 
