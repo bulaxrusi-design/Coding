@@ -1,0 +1,29 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'ai.xuci.one'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'ai.xuci.one'
+        minSdk 26
+        targetSdk 36
+        versionCode 3
+        versionName '0.3.0-local-bridge'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt')
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
