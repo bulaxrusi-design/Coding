@@ -13,10 +13,18 @@ public final class BridgeActionReceiver extends BroadcastReceiver {
     public static final String ACTION_STOP = "com.ursafe.app.bridge.STOP";
     public static final String ACTION_STOP_NUMBER_MATCH =
             "com.ursafe.app.numbermatch.STOP";
+    public static final String ACTION_STOP_LIVE_CONTROL =
+            "com.ursafe.app.livecontrol.STOP";
 
     @Override public void onReceive(Context context, Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
+        if (ACTION_STOP_LIVE_CONTROL.equals(action)) {
+            LiveControlSession.stop(context, "notification_stop");
+            BridgeNotifications.showMessage(context, "Ursafe Live Control",
+                    "Live-control სესია შეჩერდა.", 6902);
+            return;
+        }
         if (ACTION_STOP_NUMBER_MATCH.equals(action)) {
             NumberMatchAgent.stop(context);
             BridgeNotifications.showMessage(context, "Number Match agent",
