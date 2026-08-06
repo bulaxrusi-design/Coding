@@ -57,6 +57,38 @@ jobs:
           grep -q 'versionName = "2.0.0"' app/build.gradle.kts
           grep -q 'signed command v2' app/src/main/java/com/ursafe/app/AgentActivityV12.java
 
+      - name: Normalize SafeJson overloads
+        working-directory: source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/ursafe/app/QaSessionManager.java')
+          text = path.read_text(encoding='utf-8')
+          marker = 'private static final class SafeJson extends JSONObject {'
+          if marker not in text:
+              raise SystemExit('SafeJson marker missing')
+          if 'put(String name, boolean value)' not in text:
+              overloads = '''private static final class SafeJson extends JSONObject {
+                  @Override public SafeJson put(String name, boolean value) {
+                      try { super.put(name, value); } catch (Exception ignored) {}
+                      return this;
+                  }
+                  @Override public SafeJson put(String name, double value) {
+                      try { super.put(name, value); } catch (Exception ignored) {}
+                      return this;
+                  }
+                  @Override public SafeJson put(String name, int value) {
+                      try { super.put(name, value); } catch (Exception ignored) {}
+                      return this;
+                  }
+                  @Override public SafeJson put(String name, long value) {
+                      try { super.put(name, value); } catch (Exception ignored) {}
+                      return this;
+                  }'''
+              text = text.replace(marker, overloads, 1)
+              path.write_text(text, encoding='utf-8')
+          PY
+
       - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
@@ -117,4 +149,4 @@ jobs:
           git commit -m 'build: Ursafe Remote QA v2.0 debug APK' || exit 0
           git push origin HEAD:ursafe-v02-artifact
 
-# build trigger: 2026-08-06T09:58+04:00
+# build trigger: 2026-08-06T10:10+04:00
