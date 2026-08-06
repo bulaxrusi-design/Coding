@@ -22,11 +22,13 @@ public final class BridgeNotifications {
     public static void ensureChannels(Context context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return;
         NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        NotificationChannel status = new NotificationChannel(CHANNEL_STATUS, "Ursafe bridge", NotificationManager.IMPORTANCE_LOW);
+        NotificationChannel status = new NotificationChannel(CHANNEL_STATUS,
+                "Ursafe bridge", NotificationManager.IMPORTANCE_LOW);
         status.setDescription("Termux bridge-ის ფონური სტატუსი");
         status.setShowBadge(false);
-        NotificationChannel approval = new NotificationChannel(CHANNEL_APPROVAL, "Termux ბრძანებები", NotificationManager.IMPORTANCE_HIGH);
-        approval.setDescription("ბრძანების დადასტურება და შესრულების შედეგები");
+        NotificationChannel approval = new NotificationChannel(CHANNEL_APPROVAL,
+                "Ursafe მოქმედებები", NotificationManager.IMPORTANCE_HIGH);
+        approval.setDescription("ბრძანებისა და ეკრანის მოქმედების დადასტურება");
         approval.enableVibration(true);
         approval.enableLights(true);
         approval.setLightColor(Color.rgb(91, 69, 224));
@@ -36,16 +38,19 @@ public final class BridgeNotifications {
 
     public static Notification serviceNotification(Context context) {
         ensureChannels(context);
-        Intent stop = new Intent(context, BridgeActionReceiver.class).setAction(BridgeActionReceiver.ACTION_STOP);
-        PendingIntent stopIntent = PendingIntent.getBroadcast(context, 6201, stop, PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
+        Intent stop = new Intent(context, BridgeActionReceiver.class)
+                .setAction(BridgeActionReceiver.ACTION_STOP);
+        PendingIntent stopIntent = PendingIntent.getBroadcast(context, 6201, stop,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
         Intent pairing = new Intent(context, LauncherActivity.class)
                 .putExtra(LauncherActivity.EXTRA_SHOW_PAIRING, true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        PendingIntent pairingIntent = PendingIntent.getActivity(context, 6202, pairing, PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
+        PendingIntent pairingIntent = PendingIntent.getActivity(context, 6202, pairing,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
         return new Notification.Builder(context, CHANNEL_STATUS)
                 .setSmallIcon(R.drawable.ic_ursafe_logo)
                 .setContentTitle("Ursafe bridge აქტიურია")
-                .setContentText("Termux-ის დაშიფრულ ბრძანებებს ფონურად ამოწმებს")
+                .setContentText("დაშიფრულ დავალებებს ყოველ წამს ამოწმებს")
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setCategory(Notification.CATEGORY_SERVICE)
@@ -56,24 +61,44 @@ public final class BridgeNotifications {
 
     public static void showPending(Context context, String jobId, JSONObject job) {
         ensureChannels(context);
+        String kind = job.optString("kind", "termux");
         String command = job.optString("command", "");
         String reason = job.optString("reason", "");
+        String action = job.optString("action", "");
         JSONArray artifacts = job.optJSONArray("artifacts");
-        Intent approve = new Intent(context, BridgeActionReceiver.class).setAction(BridgeActionReceiver.ACTION_APPROVE).putExtra("job_id", jobId);
-        PendingIntent approveIntent = PendingIntent.getBroadcast(context, jobId.hashCode(), approve, PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
-        Intent reject = new Intent(context, BridgeActionReceiver.class).setAction(BridgeActionReceiver.ACTION_REJECT).putExtra("job_id", jobId);
-        PendingIntent rejectIntent = PendingIntent.getBroadcast(context, jobId.hashCode() ^ 0x5f3759df, reject, PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
+        Intent approve = new Intent(context, BridgeActionReceiver.class)
+                .setAction(BridgeActionReceiver.ACTION_APPROVE).putExtra("job_id", jobId);
+        PendingIntent approveIntent = PendingIntent.getBroadcast(context, jobId.hashCode(), approve,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
+        Intent reject = new Intent(context, BridgeActionReceiver.class)
+                .setAction(BridgeActionReceiver.ACTION_REJECT).putExtra("job_id", jobId);
+        PendingIntent rejectIntent = PendingIntent.getBroadcast(context,
+                jobId.hashCode() ^ 0x5f3759df, reject,
+                PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
+
+        String title;
+        String summary;
         StringBuilder details = new StringBuilder();
         if (!reason.isEmpty()) details.append(reason).append("\n\n");
-        details.append(command);
-        if (artifacts != null && artifacts.length() > 0) {
-            details.append("\n\nსაჯაროდ ასატვირთი ფაილები:");
-            for (int i = 0; i < artifacts.length(); i++) details.append("\n• ").append(artifacts.optString(i));
+        if ("device".equals(kind)) {
+            title = "მოწყობილობის მოქმედება დასადასტურებელია";
+            summary = deviceSummary(job);
+            details.append(summary);
+        } else {
+            title = "Termux ბრძანება დასადასტურებელია";
+            summary = command;
+            details.append(command);
+            if (artifacts != null && artifacts.length() > 0) {
+                details.append("\n\nასატვირთი ფაილები:");
+                for (int i = 0; i < artifacts.length(); i++) {
+                    details.append("\n• ").append(artifacts.optString(i));
+                }
+            }
         }
         Notification notification = new Notification.Builder(context, CHANNEL_APPROVAL)
                 .setSmallIcon(R.drawable.ic_ursafe_logo)
-                .setContentTitle("Termux ბრძანება დასადასტურებელია")
-                .setContentText(shorten(command, 120))
+                .setContentTitle(title)
+                .setContentText(shorten(summary, 120))
                 .setStyle(new Notification.BigTextStyle().bigText(details.toString()))
                 .setAutoCancel(false)
                 .setCategory(Notification.CATEGORY_RECOMMENDATION)
@@ -82,6 +107,21 @@ public final class BridgeNotifications {
                 .addAction(new Notification.Action.Builder(0, "დადასტურება", approveIntent).build())
                 .build();
         manager(context).notify(jobId.hashCode(), notification);
+    }
+
+    private static String deviceSummary(JSONObject job) {
+        String action = job.optString("action", "status");
+        switch (action) {
+            case "screenshot": return "ეკრანის მიმდინარე კადრის დაბრუნება";
+            case "tap": return "Tap: x=" + job.opt("x") + ", y=" + job.opt("y");
+            case "swipe": return "Swipe: (" + job.opt("from_x") + ", "
+                    + job.opt("from_y") + ") → (" + job.opt("to_x") + ", "
+                    + job.opt("to_y") + ")";
+            case "back": return "Android Back მოქმედება";
+            case "home": return "Android Home მოქმედება";
+            case "launch": return "აპის გახსნა: " + job.optString("package", "");
+            default: return "მოწყობილობის სტატუსის მიღება";
+        }
     }
 
     public static void showMessage(Context context, String title, String message, int notificationId) {
