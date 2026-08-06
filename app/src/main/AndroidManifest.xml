@@ -70,6 +70,7 @@
         </service>
 
         <receiver android:name=".BridgeActionReceiver" android:exported="false" />
+        <receiver android:name=".QaSessionReceiver" android:exported="false" />
         <service android:name=".BridgeResultService" android:exported="false" />
         <service android:name=".BridgeUploadResultService" android:exported="false" />
     </application>
