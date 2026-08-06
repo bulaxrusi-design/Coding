@@ -11,6 +11,10 @@
 
     <queries>
         <package android:name="com.termux" />
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application
@@ -35,7 +39,10 @@
         </activity>
 
         <activity android:name=".AgentActivityV08" android:exported="false" />
-        <activity android:name=".ScreenConsentActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.Dialog.Alert" />
+        <activity
+            android:name=".ScreenConsentActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Material.Light.Dialog.Alert" />
         <activity android:name=".BridgeActivity" android:exported="false" />
 
         <service
