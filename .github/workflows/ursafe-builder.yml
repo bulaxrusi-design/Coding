@@ -1,4 +1,4 @@
-name: Build Ursafe APK
+name: Build Ursafe Remote QA APK
 
 on:
   push:
@@ -32,103 +32,24 @@ jobs:
           ref: ursafe-v02-artifact
           path: artifact
 
-      - name: Normalize SafeJson overloads
+      - name: Apply Ursafe Remote QA v2.0 source bundle
         working-directory: source
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('app/src/main/java/com/ursafe/app/QaSessionManager.java')
-          text = path.read_text(encoding='utf-8')
-          marker = 'private static final class SafeJson extends JSONObject {'
-          if marker not in text:
-              raise SystemExit('SafeJson marker missing')
-          if 'put(String name, boolean value)' not in text:
-              overloads = '''private static final class SafeJson extends JSONObject {
-                  @Override public SafeJson put(String name, boolean value) {
-                      try { super.put(name, value); } catch (Exception ignored) {}
-                      return this;
-                  }
-                  @Override public SafeJson put(String name, double value) {
-                      try { super.put(name, value); } catch (Exception ignored) {}
-                      return this;
-                  }
-                  @Override public SafeJson put(String name, int value) {
-                      try { super.put(name, value); } catch (Exception ignored) {}
-                      return this;
-                  }
-                  @Override public SafeJson put(String name, long value) {
-                      try { super.put(name, value); } catch (Exception ignored) {}
-                      return this;
-                  }'''
-              text = text.replace(marker, overloads, 1)
-              path.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Patch Number Match v2 calibration
-        working-directory: source
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('app/src/main/java/com/ursafe/app/NumberMatchAgent.java')
-          text = path.read_text(encoding='utf-8')
-          old_grid = '''        double left = width * 0.033;
-                  double right = width * 0.967;
-                  double top = height * 0.201;
-                  double cell = (right - left) / COLS;'''
-          new_grid = '''        double[] grid = NumberMatchCalibration.detect(
-                          buffer, rowStride, pixelStride, width, height);
-                  double left = grid[0];
-                  double right = grid[1];
-                  double top = grid[2];
-                  double cell = grid[3];'''
-          if old_grid not in text:
-              raise SystemExit('Number Match grid marker missing')
-          text = text.replace(old_grid, new_grid, 1)
-          old_confirm = '''                waitingForChange = false;
-                          unchangedFrames = 0;
-                          noPairFrames = 0;
-                          status = "BOARD UPDATED";
-                          return;'''
-          new_confirm = '''                waitingForChange = false;
-                          unchangedFrames = 0;
-                          noPairFrames = 0;
-                          moves++;
-                          status = "MOVE CONFIRMED " + moves;
-                          return;'''
-          if old_confirm not in text:
-              raise SystemExit('Number Match confirmation marker missing')
-          text = text.replace(old_confirm, new_confirm, 1)
-          old_false_count = '''            lastActionMs = nowMs;
-                      moves++;
-                      noPairFrames = 0;'''
-          new_false_count = '''            lastActionMs = nowMs;
-                      noPairFrames = 0;'''
-          if old_false_count not in text:
-              raise SystemExit('Number Match move counter marker missing')
-          text = text.replace(old_false_count, new_false_count, 1)
-          text = text.replace('status = String.format(Locale.US, "MOVE %d: %d + %d", moves, pair.a, pair.b);',
-                              'status = String.format(Locale.US, "TRY: %d + %d", pair.a, pair.b);', 1)
-          path.write_text(text, encoding='utf-8')
-          PY
-
-      - name: Optimize live frame payload
-        working-directory: source
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('app/src/main/java/com/ursafe/app/ScreenCaptureService.java')
-          text = path.read_text(encoding='utf-8')
-          replacements = {
-              'int targetWidth = Math.min(480, width);': 'int targetWidth = Math.min(360, width);',
-              'ByteArrayOutputStream output = new ByteArrayOutputStream(80_000);': 'ByteArrayOutputStream output = new ByteArrayOutputStream(48_000);',
-              'compact.compress(Bitmap.CompressFormat.JPEG, 58, output);': 'compact.compress(Bitmap.CompressFormat.JPEG, 50, output);'
-          }
-          for old, new in replacements.items():
-              if old not in text:
-                  raise SystemExit('frame optimization marker missing: ' + old)
-              text = text.replace(old, new, 1)
-          path.write_text(text, encoding='utf-8')
-          PY
+          set -euo pipefail
+          PATCH='.ursafe/remote-qa-v2.0-patch.tar.gz.b64'
+          test -f "$PATCH"
+          base64 -d "$PATCH" > /tmp/ursafe-v2-patch.tar.gz
+          echo '0158eb5fa3463acf1e9ce67f3ca36732419fe794f9f0f4eb4bcd16563c42974f  /tmp/ursafe-v2-patch.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/ursafe-v2-patch.tar.gz -C .
+          rm -f \
+            app/src/main/java/com/ursafe/app/NumberMatchAgent.java \
+            app/src/main/java/com/ursafe/app/NumberMatchCalibration.java
+          if grep -R --line-number 'NumberMatchAgent\|NumberMatchCalibration' app/src/main/java app/src/main/AndroidManifest.xml; then
+            echo 'Number Match-specific code is still referenced' >&2
+            exit 1
+          fi
+          grep -q 'versionName = "2.0.0"' app/build.gradle.kts
+          grep -q 'signed command v2' app/src/main/java/com/ursafe/app/AgentActivityV12.java
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -158,11 +79,12 @@ jobs:
           test -f "$APK"
           unzip -t "$APK"
           sha256sum "$APK"
+          test "$(stat --printf='%s' "$APK")" -gt 50000
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Ursafe-Live-QA-v1.2-debug-apk
+          name: Ursafe-Remote-QA-v2.0-debug-apk
           path: source/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -173,19 +95,20 @@ jobs:
           set -euo pipefail
           APK='source/app/build/outputs/apk/debug/app-debug.apk'
           mkdir -p artifact/ursafe-build-output
-          sha256sum "$APK" | awk '{print $1}' > artifact/ursafe-build-output/Ursafe-Live-QA-v1.2-debug.apk.sha256
-          stat --printf='%s\n' "$APK" > artifact/ursafe-build-output/Ursafe-Live-QA-v1.2-debug.apk.size
+          cp "$APK" artifact/ursafe-build-output/Ursafe-Remote-QA-v2.0-debug.apk
+          sha256sum "$APK" | awk '{print $1}' > artifact/ursafe-build-output/Ursafe-Remote-QA-v2.0-debug.apk.sha256
+          stat --printf='%s\n' "$APK" > artifact/ursafe-build-output/Ursafe-Remote-QA-v2.0-debug.apk.size
           printf '%s\n' '${{ github.run_id }}' > artifact/ursafe-build-output/run-id.txt
           date -u +'%Y-%m-%dT%H:%M:%SZ' > artifact/ursafe-build-output/built-at.txt
 
-      - name: Commit build metadata
+      - name: Commit build artifact and metadata
         if: github.event_name == 'push'
         working-directory: artifact
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add ursafe-build-output
-          git commit -m 'build: Ursafe Live QA v1.2 debug APK' || exit 0
+          git commit -m 'build: Ursafe Remote QA v2.0 debug APK' || exit 0
           git push origin HEAD:ursafe-v02-artifact
 
-# build trigger: 2026-08-06T08:50+04:00
+# build trigger: 2026-08-06T09:45+04:00
