@@ -24,7 +24,7 @@
         android:usesCleartextTraffic="false">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".UrsafeActivity"
             android:exported="true"
             android:screenOrientation="unspecified">
             <intent-filter>
@@ -33,6 +33,13 @@
             </intent-filter>
         </activity>
 
+        <service
+            android:name=".BridgeResultService"
+            android:exported="false" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="false" />
         <service
             android:name=".CommandResultService"
             android:exported="false" />
