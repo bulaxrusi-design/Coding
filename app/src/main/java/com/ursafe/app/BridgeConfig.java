@@ -7,7 +7,7 @@ public final class BridgeConfig {
             "https://raw.githubusercontent.com/bulaxrusi-design/Coding/ursafe-device-bridge/";
     public static final String TERMUX_PACKAGE = "com.termux";
     public static final String TERMUX_PERMISSION = "com.termux.permission.RUN_COMMAND";
-    public static final String ACTION_LOCAL_RESULT = "com.ursafe.app.TERMUX_RESULT_V05";
+    public static final String ACTION_LOCAL_RESULT = "com.ursafe.app.TERMUX_RESULT_V06";
 
     private BridgeConfig() {}
 }
