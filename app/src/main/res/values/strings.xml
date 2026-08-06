@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Ursafe Bridge</string>
+    <string name="app_name">Ursafe Agent</string>
+    <string name="accessibility_description">Ursafe იყენებს ხილულ და დასადასტურებელ tap/swipe მოქმედებებს მოწყობილობის სამართავად.</string>
 </resources>
