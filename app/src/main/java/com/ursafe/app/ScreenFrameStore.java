@@ -16,6 +16,7 @@ public final class ScreenFrameStore {
         latestTimestampMs = timestampMs;
         latestMotion = motion;
         frameCount++;
+        QaSessionManager.onFrame(foregroundPackage, timestampMs, motion);
     }
 
     public static synchronized void updateJpeg(byte[] jpeg, long timestampMs) {
