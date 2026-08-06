@@ -1,0 +1,116 @@
+name: Build ChatGPT Device Lab v2.4.1 Final APK
+
+on:
+  push:
+    branches: ["device-lab-v2.4-final"]
+    paths-ignore:
+      - "dist/**"
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Materialize v2.4 sources
+        run: python3 device_lab_v2/tools/apply_v24.py
+
+      - name: Apply v2.4.1 relay resilience patch
+        env:
+          V241_PATCH_GZ_B64: "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"
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, os
+          from pathlib import Path
+          payload = base64.b64decode(os.environ["V241_PATCH_GZ_B64"])
+          Path("/tmp/v241.patch").write_bytes(gzip.decompress(payload))
+          PY
+          git apply --check --exclude=device_lab_v2/app/src/main/java/com/ttclab/chatbridge/GitHubClient.kt /tmp/v241.patch
+          git apply --exclude=device_lab_v2/app/src/main/java/com/ttclab/chatbridge/GitHubClient.kt /tmp/v241.patch
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Verify final source features and relay resilience
+        run: |
+          grep -q 'versionCode = 7' device_lab_v2/app/build.gradle.kts
+          grep -q 'versionName = "2.4.1"' device_lab_v2/app/build.gradle.kts
+          grep -q 'com.google.mlkit:text-recognition:16.0.1' device_lab_v2/app/build.gradle.kts
+          grep -q 'private const val VISION_PATH = "state/vision.json"' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q 'jpeg_base64_chunks' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q '"tap_text"' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q 'publishStatus(stateClient, initialResolution, force = true)' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q 'frame retry active' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeService.kt
+          grep -q 'retryable403' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/GitHubClient.kt
+          grep -q 'snapshotWindowTree' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/BridgeAccessibilityService.kt
+          grep -q 'TextRecognition.getClient' device_lab_v2/app/src/main/java/com/ttclab/chatbridge/ScreenAnalyzer.kt
+
+      - name: Run tests, lint and APK build
+        working-directory: device_lab_v2
+        run: gradle --no-daemon testDebugUnitTest lintDebug assembleDebug
+
+      - name: Verify APK metadata
+        run: |
+          APK=device_lab_v2/app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | tee /tmp/badging.txt
+          grep -q "versionCode='7'" /tmp/badging.txt
+          grep -q "versionName='2.4.1'" /tmp/badging.txt
+          grep -q "application-label:'ChatGPT Device Lab v2.4.1'" /tmp/badging.txt
+
+      - name: Stage APK
+        run: |
+          mkdir -p dist
+          cp device_lab_v2/app/build/outputs/apk/debug/app-debug.apk dist/ChatGPT-Device-Lab-v2.4.1-final-debug.apk
+          sha256sum dist/ChatGPT-Device-Lab-v2.4.1-final-debug.apk | tee dist/ChatGPT-Device-Lab-v2.4.1-final-debug.apk.sha256
+          printf '%s\n' "$GITHUB_RUN_ID" > dist/latest_v241_run_id.txt
+
+      - name: Publish APK and corrected sources on branch
+        if: github.event_name == 'push'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add device_lab_v2/app/build.gradle.kts \
+                  device_lab_v2/app/src/main/AndroidManifest.xml \
+                  device_lab_v2/app/src/main/java/com/ttclab/chatbridge \
+                  device_lab_v2/app/src/main/res/values/strings.xml \
+                  dist/ChatGPT-Device-Lab-v2.4.1-final-debug.apk \
+                  dist/ChatGPT-Device-Lab-v2.4.1-final-debug.apk.sha256 \
+                  dist/latest_v241_run_id.txt
+          if git diff --cached --quiet; then
+            echo "No APK or source changes"
+          else
+            git commit -m "Build ChatGPT Device Lab v2.4.1 Final [skip ci]"
+            git push
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chatgpt-device-lab-v2.4.1-final-debug-apk
+          retention-days: 90
+          path: |
+            dist/ChatGPT-Device-Lab-v2.4.1-final-debug.apk
+            dist/ChatGPT-Device-Lab-v2.4.1-final-debug.apk.sha256
+            device_lab_v2/app/build.gradle.kts
+            device_lab_v2/app/src/main/AndroidManifest.xml
+            device_lab_v2/app/src/main/java/com/ttclab/chatbridge/
+            device_lab_v2/app/src/main/res/values/strings.xml
+            device_lab_v2/app/build/reports/lint-results-debug.html
+            device_lab_v2/app/build/reports/tests/testDebugUnitTest/
