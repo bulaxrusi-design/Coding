@@ -64,7 +64,7 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Ursafe-v0.3-debug-apk
+          name: Ursafe-v0.4-debug-apk
           path: source/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
@@ -75,8 +75,8 @@ jobs:
           set -euo pipefail
           APK='source/app/build/outputs/apk/debug/app-debug.apk'
           mkdir -p artifact/ursafe-build-output
-          sha256sum "$APK" | awk '{print $1}' > artifact/ursafe-build-output/Ursafe-v0.3-debug.apk.sha256
-          stat --printf='%s\n' "$APK" > artifact/ursafe-build-output/Ursafe-v0.3-debug.apk.size
+          sha256sum "$APK" | awk '{print $1}' > artifact/ursafe-build-output/Ursafe-v0.4-debug.apk.sha256
+          stat --printf='%s\n' "$APK" > artifact/ursafe-build-output/Ursafe-v0.4-debug.apk.size
           printf '%s\n' '${{ github.run_id }}' > artifact/ursafe-build-output/run-id.txt
           date -u +'%Y-%m-%dT%H:%M:%SZ' > artifact/ursafe-build-output/built-at.txt
 
@@ -87,5 +87,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add ursafe-build-output
-          git commit -m 'build: Ursafe v0.3 debug APK'
+          git commit -m 'build: Ursafe v0.4 debug APK'
           git push origin HEAD:ursafe-v02-artifact
