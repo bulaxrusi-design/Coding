@@ -39,7 +39,7 @@ public final class LauncherActivity extends Activity {
         value.setPadding(dp(20), dp(14), dp(20), dp(14));
 
         AlertDialog alert = new AlertDialog.Builder(this)
-                .setTitle("Ursafe Bridge დაწყვილება")
+                .setTitle("Ursafe Agent დაწყვილება")
                 .setMessage("ეს კოდი პირადია. გამომიგზავნე მხოლოდ ამ ჩატში, რათა ბრძანებები და შედეგები ბოლომდე დაშიფრული იყოს.")
                 .setView(value)
                 .setCancelable(false)
@@ -76,7 +76,7 @@ public final class LauncherActivity extends Activity {
         continuing = true;
         try { BridgeForegroundService.start(this); }
         catch (Exception error) { Toast.makeText(this, "Bridge ვერ გაეშვა: " + safe(error.getMessage()), Toast.LENGTH_LONG).show(); }
-        startActivity(new Intent(this, BridgeActivity.class));
+        startActivity(new Intent(this, AgentActivityV08.class));
         finish();
     }
 
