@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ChatGPT Device Lab v2.1</string>
+    <string name="accessibility_description">Performs foreground-only tap, swipe and back gestures for the single allowlisted test app while the visible bridge session is active.</string>
+</resources>
