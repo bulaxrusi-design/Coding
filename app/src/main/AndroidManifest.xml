@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <queries>
@@ -33,10 +34,9 @@
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".BridgeActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified" />
+        <activity android:name=".AgentActivityV08" android:exported="false" />
+        <activity android:name=".ScreenConsentActivity" android:exported="false" android:theme="@android:style/Theme.Material.Light.Dialog.Alert" />
+        <activity android:name=".BridgeActivity" android:exported="false" />
 
         <service
             android:name=".BridgeForegroundService"
@@ -44,16 +44,26 @@
             android:stopWithTask="false"
             android:foregroundServiceType="dataSync" />
 
-        <receiver
-            android:name=".BridgeActionReceiver"
-            android:exported="false" />
+        <service
+            android:name=".ScreenCaptureService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="mediaProjection" />
 
         <service
-            android:name=".BridgeResultService"
-            android:exported="false" />
+            android:name=".UrsafeAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ursafe_accessibility_service" />
+        </service>
 
-        <service
-            android:name=".BridgeUploadResultService"
-            android:exported="false" />
+        <receiver android:name=".BridgeActionReceiver" android:exported="false" />
+        <service android:name=".BridgeResultService" android:exported="false" />
+        <service android:name=".BridgeUploadResultService" android:exported="false" />
     </application>
 </manifest>
