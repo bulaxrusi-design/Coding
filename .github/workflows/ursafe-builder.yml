@@ -36,9 +36,15 @@ jobs:
         working-directory: source
         run: |
           set -euo pipefail
-          PATCH='.ursafe/remote-qa-v2.0-patch.tar.gz.b64'
-          test -f "$PATCH"
-          base64 -d "$PATCH" > /tmp/ursafe-v2-patch.tar.gz
+          test "$(find .ursafe -maxdepth 1 -name 'remote-qa-v2.0-patch.part*' | wc -l)" -eq 7
+          cat .ursafe/remote-qa-v2.0-patch.part00 \
+              .ursafe/remote-qa-v2.0-patch.part01 \
+              .ursafe/remote-qa-v2.0-patch.part02 \
+              .ursafe/remote-qa-v2.0-patch.part03 \
+              .ursafe/remote-qa-v2.0-patch.part04 \
+              .ursafe/remote-qa-v2.0-patch.part05 \
+              .ursafe/remote-qa-v2.0-patch.part06 \
+              | base64 -d > /tmp/ursafe-v2-patch.tar.gz
           echo '0158eb5fa3463acf1e9ce67f3ca36732419fe794f9f0f4eb4bcd16563c42974f  /tmp/ursafe-v2-patch.tar.gz' | sha256sum -c -
           tar -xzf /tmp/ursafe-v2-patch.tar.gz -C .
           rm -f \
@@ -111,4 +117,4 @@ jobs:
           git commit -m 'build: Ursafe Remote QA v2.0 debug APK' || exit 0
           git push origin HEAD:ursafe-v02-artifact
 
-# build trigger: 2026-08-06T09:45+04:00
+# build trigger: 2026-08-06T09:58+04:00
