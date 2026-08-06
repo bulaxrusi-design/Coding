@@ -10,10 +10,6 @@
 
     <queries>
         <package android:name="com.termux" />
-        <intent>
-            <action android:name="android.intent.action.VIEW" />
-            <data android:scheme="https" />
-        </intent>
     </queries>
 
     <application
@@ -38,18 +34,9 @@
         </activity>
 
         <activity
-            android:name=".UrsafeActivityV07"
+            android:name=".BridgeActivity"
             android:exported="false"
             android:screenOrientation="unspecified" />
-
-        <activity
-            android:name=".UrsafeActivity"
-            android:exported="false"
-            android:screenOrientation="unspecified" />
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="false" />
 
         <service
             android:name=".BridgeForegroundService"
@@ -67,10 +54,6 @@
 
         <service
             android:name=".BridgeUploadResultService"
-            android:exported="false" />
-
-        <service
-            android:name=".CommandResultService"
             android:exported="false" />
     </application>
 </manifest>
