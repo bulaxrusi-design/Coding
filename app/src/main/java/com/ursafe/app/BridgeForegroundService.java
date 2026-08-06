@@ -21,7 +21,7 @@ public final class BridgeForegroundService extends Service {
     private static final String PREF_HANDLED = "last_handled_job";
     private static final String PREF_NOTIFIED = "last_notified_job";
     private static final String PREF_PENDING = "pending_job";
-    public static final long POLL_SECONDS = 2L;
+    public static final long POLL_SECONDS = 1L;
 
     private static volatile boolean running;
     private ScheduledExecutorService executor;
@@ -32,16 +32,16 @@ public final class BridgeForegroundService extends Service {
         else context.startService(intent);
     }
 
-    public static boolean isRunning() {
-        return running;
-    }
+    public static boolean isRunning() { return running; }
 
     @Override public void onCreate() {
         super.onCreate();
         running = true;
-        startForeground(BridgeNotifications.STATUS_ID, BridgeNotifications.serviceNotification(this));
+        startForeground(BridgeNotifications.STATUS_ID,
+                BridgeNotifications.serviceNotification(this));
         executor = Executors.newSingleThreadScheduledExecutor();
-        executor.scheduleWithFixedDelay(this::pollSafely, 0, POLL_SECONDS, TimeUnit.SECONDS);
+        executor.scheduleWithFixedDelay(this::pollSafely, 0, POLL_SECONDS,
+                TimeUnit.SECONDS);
     }
 
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
@@ -56,14 +56,13 @@ public final class BridgeForegroundService extends Service {
         super.onDestroy();
     }
 
-    @Override public IBinder onBind(Intent intent) {
-        return null;
-    }
+    @Override public IBinder onBind(Intent intent) { return null; }
 
     private void pollSafely() {
         try {
             String deviceId = BridgeCrypto.getOrCreateDeviceId(this);
-            String url = BridgeConfig.RAW_BASE + "ursafe-bridge/commands/" + deviceId + ".json?ts=" + System.currentTimeMillis();
+            String url = BridgeConfig.RAW_BASE + "ursafe-bridge/commands/"
+                    + deviceId + ".json?ts=" + System.currentTimeMillis();
             String response = get(url);
             if (response == null || response.trim().isEmpty()) return;
 
@@ -76,19 +75,18 @@ public final class BridgeForegroundService extends Service {
             if (jobId.equals(handled) || jobId.equals(notified)) return;
 
             JSONObject job = BridgeCrypto.decryptJob(this, envelope);
-            String blocked = BridgeCommandPolicy.rejectionReason(job.optString("command", ""));
-            if (blocked != null) {
-                BridgeActionReceiver.publishTerminalResult(
-                        this,
-                        jobId,
-                        "blocked",
-                        -1,
-                        "",
-                        blocked,
-                        "Ursafe policy blocked the command.",
-                        job.optJSONArray("artifacts"));
-                markHandled(jobId);
-                return;
+            String kind = job.optString("kind", "termux");
+            if (!"device".equals(kind)) {
+                String blocked = BridgeCommandPolicy.rejectionReason(
+                        job.optString("command", ""));
+                if (blocked != null) {
+                    BridgeActionReceiver.publishTerminalResult(this, jobId,
+                            "blocked", -1, "", blocked,
+                            "Ursafe policy blocked the command.",
+                            job.optJSONArray("artifacts"));
+                    markHandled(jobId);
+                    return;
+                }
             }
 
             JSONObject pending = new JSONObject();
@@ -138,9 +136,9 @@ public final class BridgeForegroundService extends Service {
     private String get(String value) throws Exception {
         HttpURLConnection connection = (HttpURLConnection) new URL(value).openConnection();
         connection.setRequestMethod("GET");
-        connection.setConnectTimeout(8000);
-        connection.setReadTimeout(8000);
-        connection.setRequestProperty("User-Agent", "Ursafe-Bridge/0.7");
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(5000);
+        connection.setRequestProperty("User-Agent", "Ursafe-Agent/0.9");
         connection.setRequestProperty("Cache-Control", "no-cache");
         connection.setUseCaches(false);
         int status = connection.getResponseCode();
@@ -149,8 +147,7 @@ public final class BridgeForegroundService extends Service {
             return null;
         }
         InputStream stream = status >= 200 && status < 300
-                ? connection.getInputStream()
-                : connection.getErrorStream();
+                ? connection.getInputStream() : connection.getErrorStream();
         String body = read(stream);
         connection.disconnect();
         if (status < 200 || status >= 300) {
@@ -166,7 +163,7 @@ public final class BridgeForegroundService extends Service {
                 new InputStreamReader(stream, StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                if (output.length() > 256000) {
+                if (output.length() > 512000) {
                     throw new IllegalStateException("Bridge response is too large");
                 }
                 output.append(line).append('\n');
