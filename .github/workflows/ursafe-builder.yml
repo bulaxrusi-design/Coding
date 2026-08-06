@@ -89,3 +89,5 @@ jobs:
           git add ursafe-build-output
           git commit -m 'build: Ursafe v0.6 debug APK'
           git push origin HEAD:ursafe-v02-artifact
+
+# build trigger: 2026-08-06T05:00+04:00
