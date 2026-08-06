@@ -72,9 +72,12 @@ public final class QaSessionManager {
             checkpoints = 0L;
             lastCheckpoint = "";
             lastSampleAtMs = 0L;
+            lastExport = "";
             try {
                 File dir = new File(context.getFilesDir(), "qa-sessions");
-                if (!dir.exists() && !dir.mkdirs()) throw new IllegalStateException("QA საქაღალდე ვერ შეიქმნა");
+                if (!dir.exists() && !dir.mkdirs()) {
+                    throw new IllegalStateException("QA საქაღალდე ვერ შეიქმნა");
+                }
                 eventFile = new File(dir, sessionId + ".jsonl");
                 eventWriter = new BufferedWriter(new OutputStreamWriter(
                         new FileOutputStream(eventFile), StandardCharsets.UTF_8));
@@ -86,8 +89,11 @@ public final class QaSessionManager {
                         .put("authorized_test", true));
                 showNotification(context);
                 Intent launch = context.getPackageManager().getLaunchIntentForPackage(selectedPackage);
-                if (launch == null) throw new IllegalStateException("თამაშის გაშვების Intent ვერ მოიძებნა");
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
+                if (launch == null) {
+                    throw new IllegalStateException("თამაშის გაშვების Intent ვერ მოიძებნა");
+                }
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
                 context.startActivity(launch);
                 writeEventLocked("launch_requested", json());
                 return "QA სესია დაიწყო: " + selectedLabel;
@@ -106,16 +112,22 @@ public final class QaSessionManager {
     }
 
     private static String stopLocked(Context context, String reason, boolean export) {
-        if (!active) return lastExport.isEmpty() ? "QA სესია აქტიური არ არის." : "ბოლო ანგარიში: " + lastExport;
+        if (!active) {
+            return lastExport.isEmpty()
+                    ? "QA სესია აქტიური არ არის."
+                    : "ბოლო ანგარიში: " + lastExport;
+        }
         long stoppedAt = System.currentTimeMillis();
         try {
             writeEventLocked("session_stop", json().put("reason", reason));
             JSONObject summary = summaryJson(stoppedAt, reason);
             writeEventLocked("summary", summary);
             eventWriter.flush();
-            File summaryFile = new File(eventFile.getParentFile(), sessionId + "-summary.json");
+            File summaryFile = new File(eventFile.getParentFile(),
+                    sessionId + "-summary.json");
             writeText(summaryFile, summary.toString(2));
-            File csvFile = new File(eventFile.getParentFile(), sessionId + "-summary.csv");
+            File csvFile = new File(eventFile.getParentFile(),
+                    sessionId + "-summary.csv");
             writeText(csvFile, csvHeader() + "\n" + csvRow(summary, reason) + "\n");
             if (export) {
                 String exported = exportToDownloads(context, summaryFile, "application/json");
@@ -127,10 +139,13 @@ public final class QaSessionManager {
         } finally {
             active = false;
             closeQuietly();
-            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            NotificationManager manager = (NotificationManager)
+                    context.getSystemService(Context.NOTIFICATION_SERVICE);
             manager.cancel(NOTIFICATION_ID);
         }
-        return lastExport.isEmpty() ? "QA სესია შეჩერდა." : "QA ანგარიში შენახულია: " + lastExport;
+        return lastExport.isEmpty()
+                ? "QA სესია შეჩერდა."
+                : "QA ანგარიში შენახულია: " + lastExport;
     }
 
     public static void onFrame(String foregroundPackage, long nowMs, double motion) {
@@ -174,7 +189,8 @@ public final class QaSessionManager {
         synchronized (LOCK) {
             if (!active) return "QA სესია აქტიური არ არის.";
             checkpoints++;
-            lastCheckpoint = safe(name).isEmpty() ? "checkpoint-" + checkpoints : name;
+            lastCheckpoint = safe(name).isEmpty()
+                    ? "checkpoint-" + checkpoints : name;
             writeEventLocked("checkpoint", json()
                     .put("name", lastCheckpoint)
                     .put("elapsed_ms", System.currentTimeMillis() - startedAtMs));
@@ -196,16 +212,22 @@ public final class QaSessionManager {
     public static String selectedPackage() { return selectedPackage; }
     public static String mode() { return mode; }
     public static String sessionId() { return sessionId; }
-    public static long elapsedMs() { return active ? Math.max(0, System.currentTimeMillis() - startedAtMs) : 0; }
-    public static long ttcToForegroundMs() { return foregroundAtMs == 0L ? -1 : foregroundAtMs - startedAtMs; }
-    public static long ttcToFirstFrameMs() { return firstFrameAtMs == 0L ? -1 : firstFrameAtMs - startedAtMs; }
+    public static long elapsedMs() {
+        return active ? Math.max(0, System.currentTimeMillis() - startedAtMs) : 0;
+    }
+    public static long ttcToForegroundMs() {
+        return foregroundAtMs == 0L ? -1 : foregroundAtMs - startedAtMs;
+    }
+    public static long ttcToFirstFrameMs() {
+        return firstFrameAtMs == 0L ? -1 : firstFrameAtMs - startedAtMs;
+    }
     public static long frameSamples() { return frameSamples; }
     public static long accessibilityEvents() { return accessibilityEvents; }
     public static long checkpoints() { return checkpoints; }
     public static String lastCheckpoint() { return lastCheckpoint; }
     public static String lastExport() { return lastExport; }
 
-    private static JSONObject summaryJson(long stoppedAt, String reason) throws Exception {
+    private static JSONObject summaryJson(long stoppedAt, String reason) {
         return json()
                 .put("session_id", sessionId)
                 .put("game_label", selectedLabel)
@@ -217,8 +239,10 @@ public final class QaSessionManager {
                 .put("first_frame_at_ms", firstFrameAtMs)
                 .put("stopped_at_ms", stoppedAt)
                 .put("duration_ms", stoppedAt - startedAtMs)
-                .put("ttc_to_foreground_ms", foregroundAtMs == 0L ? JSONObject.NULL : foregroundAtMs - startedAtMs)
-                .put("ttc_to_first_frame_ms", firstFrameAtMs == 0L ? JSONObject.NULL : firstFrameAtMs - startedAtMs)
+                .put("ttc_to_foreground_ms",
+                        foregroundAtMs == 0L ? JSONObject.NULL : foregroundAtMs - startedAtMs)
+                .put("ttc_to_first_frame_ms",
+                        firstFrameAtMs == 0L ? JSONObject.NULL : firstFrameAtMs - startedAtMs)
                 .put("frame_samples", frameSamples)
                 .put("accessibility_events", accessibilityEvents)
                 .put("checkpoints", checkpoints)
@@ -238,20 +262,31 @@ public final class QaSessionManager {
         } catch (Exception ignored) {}
     }
 
-    private static JSONObject json() {
-        return new JSONObject();
+    private static SafeJson json() {
+        return new SafeJson();
+    }
+
+    private static final class SafeJson extends JSONObject {
+        @Override public SafeJson put(String name, Object value) {
+            try {
+                super.put(name, value);
+            } catch (Exception ignored) {}
+            return this;
+        }
     }
 
     private static void showNotification(Context context) {
-        NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        NotificationManager manager = (NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL, "Ursafe QA sessions",
-                    NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel = new NotificationChannel(
+                    CHANNEL, "Ursafe QA sessions", NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("ხილული, ავტორიზებული თამაშის QA/TTC სესია");
             channel.setShowBadge(false);
             manager.createNotificationChannel(channel);
         }
-        Intent stopIntent = new Intent(context, QaSessionReceiver.class).setAction(QaSessionReceiver.ACTION_STOP);
+        Intent stopIntent = new Intent(context, QaSessionReceiver.class)
+                .setAction(QaSessionReceiver.ACTION_STOP);
         PendingIntent stop = PendingIntent.getBroadcast(context, 6801, stopIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT | immutableFlag());
         Intent openIntent = new Intent(context, AgentActivityV08.class);
@@ -264,12 +299,14 @@ public final class QaSessionManager {
                 .setContentIntent(open)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
-                .addAction(new Notification.Action.Builder(0, "შეჩერება და ანგარიში", stop).build())
+                .addAction(new Notification.Action.Builder(
+                        0, "შეჩერება და ანგარიში", stop).build())
                 .build();
         manager.notify(NOTIFICATION_ID, notification);
     }
 
-    private static String exportToDownloads(Context context, File source, String mime) throws Exception {
+    private static String exportToDownloads(Context context, File source, String mime)
+            throws Exception {
         if (source == null || !source.exists()) return "";
         if (Build.VERSION.SDK_INT < 29) return source.getAbsolutePath();
         ContentValues values = new ContentValues();
@@ -278,13 +315,19 @@ public final class QaSessionManager {
         values.put(MediaStore.Downloads.RELATIVE_PATH, "Download/Ursafe-QA");
         ContentResolver resolver = context.getContentResolver();
         Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
-        if (uri == null) throw new IllegalStateException("Downloads export ვერ შეიქმნა");
+        if (uri == null) {
+            throw new IllegalStateException("Downloads export ვერ შეიქმნა");
+        }
         try (OutputStream output = resolver.openOutputStream(uri);
              java.io.FileInputStream input = new java.io.FileInputStream(source)) {
-            if (output == null) throw new IllegalStateException("Downloads stream unavailable");
+            if (output == null) {
+                throw new IllegalStateException("Downloads stream unavailable");
+            }
             byte[] buffer = new byte[8192];
             int read;
-            while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
+            while ((read = input.read(buffer)) >= 0) {
+                output.write(buffer, 0, read);
+            }
         }
         return "Download/Ursafe-QA/" + source.getName();
     }
@@ -297,15 +340,19 @@ public final class QaSessionManager {
     }
 
     private static String csvHeader() {
-        return "session_id,game_label,game_package,mode,started_at_ms,duration_ms,ttc_to_foreground_ms,ttc_to_first_frame_ms,frame_samples,accessibility_events,checkpoints,stop_reason";
+        return "session_id,game_label,game_package,mode,started_at_ms,duration_ms,"
+                + "ttc_to_foreground_ms,ttc_to_first_frame_ms,frame_samples,"
+                + "accessibility_events,checkpoints,stop_reason";
     }
 
     private static String csvRow(JSONObject summary, String reason) {
-        return csv(sessionId) + "," + csv(selectedLabel) + "," + csv(selectedPackage) + ","
-                + csv(mode) + "," + startedAtMs + "," + summary.optLong("duration_ms") + ","
+        return csv(sessionId) + "," + csv(selectedLabel) + "," + csv(selectedPackage)
+                + "," + csv(mode) + "," + startedAtMs + ","
+                + summary.optLong("duration_ms") + ","
                 + (foregroundAtMs == 0L ? "" : foregroundAtMs - startedAtMs) + ","
                 + (firstFrameAtMs == 0L ? "" : firstFrameAtMs - startedAtMs) + ","
-                + frameSamples + "," + accessibilityEvents + "," + checkpoints + "," + csv(reason);
+                + frameSamples + "," + accessibilityEvents + "," + checkpoints
+                + "," + csv(reason);
     }
 
     private static String csv(String value) {
@@ -313,7 +360,9 @@ public final class QaSessionManager {
     }
 
     private static void closeQuietly() {
-        try { if (eventWriter != null) eventWriter.close(); } catch (Exception ignored) {}
+        try {
+            if (eventWriter != null) eventWriter.close();
+        } catch (Exception ignored) {}
         eventWriter = null;
         eventFile = null;
     }
