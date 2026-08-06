@@ -8,6 +8,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
 import android.graphics.PixelFormat;
 import android.hardware.display.DisplayManager;
 import android.hardware.display.VirtualDisplay;
@@ -22,6 +23,7 @@ import android.os.IBinder;
 import android.util.DisplayMetrics;
 import android.view.WindowManager;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 
 public final class ScreenCaptureService extends Service {
@@ -32,6 +34,7 @@ public final class ScreenCaptureService extends Service {
     private static final String CHANNEL = "ursafe_screen_observer";
     private static final int NOTIFICATION_ID = 6500;
     private static final long FRAME_INTERVAL_MS = 80L;
+    private static final long JPEG_INTERVAL_MS = 280L;
     private static volatile boolean active;
 
     private MediaProjection projection;
@@ -40,6 +43,7 @@ public final class ScreenCaptureService extends Service {
     private HandlerThread workerThread;
     private Handler worker;
     private long lastProcessedMs;
+    private long lastJpegMs;
     private byte[] previousLuma;
 
     public static void start(Context context, int resultCode, Intent data) {
@@ -112,7 +116,7 @@ public final class ScreenCaptureService extends Service {
         Notification notification = new Notification.Builder(this, CHANNEL)
                 .setSmallIcon(R.drawable.ic_ursafe_logo)
                 .setContentTitle("Ursafe ეკრანს ადგილობრივად აკვირდება")
-                .setContentText("კადრები მოწყობილობიდან გარეთ არ იგზავნება")
+                .setContentText("კადრები მხოლოდ დამტკიცებული მოთხოვნით ბრუნდება")
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .addAction(new Notification.Action.Builder(0, "შეჩერება", stopIntent).build())
@@ -144,6 +148,7 @@ public final class ScreenCaptureService extends Service {
         window.getDefaultDisplay().getRealMetrics(metrics);
         int sourceWidth = Math.max(1, metrics.widthPixels);
         int sourceHeight = Math.max(1, metrics.heightPixels);
+        ScreenFrameStore.setScreenSize(sourceWidth, sourceHeight);
         int captureWidth = Math.min(720, sourceWidth);
         int captureHeight = Math.max(1, Math.round(sourceHeight * (captureWidth / (float) sourceWidth)));
 
@@ -199,10 +204,50 @@ public final class ScreenCaptureService extends Service {
                     : totalDiff / (255.0 * current.length);
             previousLuma = current;
             ScreenFrameStore.update(motion, now);
+
+            if (now - lastJpegMs >= JPEG_INTERVAL_MS) {
+                lastJpegMs = now;
+                byte[] jpeg = encodeCompactJpeg(buffer, rowStride, pixelStride, width, height);
+                if (jpeg != null && jpeg.length > 0) ScreenFrameStore.updateJpeg(jpeg, now);
+            }
         } catch (Exception ignored) {
             // Frame drops are expected under load and must not stop the observer.
         } finally {
             if (image != null) image.close();
+        }
+    }
+
+    private static byte[] encodeCompactJpeg(ByteBuffer source, int rowStride,
+                                            int pixelStride, int width, int height) {
+        Bitmap padded = null;
+        Bitmap cropped = null;
+        Bitmap compact = null;
+        try {
+            int paddedWidth = Math.max(width, rowStride / Math.max(1, pixelStride));
+            padded = Bitmap.createBitmap(paddedWidth, height, Bitmap.Config.ARGB_8888);
+            source.rewind();
+            padded.copyPixelsFromBuffer(source);
+            cropped = Bitmap.createBitmap(padded, 0, 0, width, height);
+            int targetWidth = Math.min(540, width);
+            int targetHeight = Math.max(1, Math.round(height * (targetWidth / (float) width)));
+            compact = targetWidth == width ? cropped
+                    : Bitmap.createScaledBitmap(cropped, targetWidth, targetHeight, true);
+            ByteArrayOutputStream output = new ByteArrayOutputStream(96_000);
+            compact.compress(Bitmap.CompressFormat.JPEG, 62, output);
+            byte[] data = output.toByteArray();
+            if (data.length > 220_000 && targetWidth > 360) {
+                Bitmap smaller = Bitmap.createScaledBitmap(cropped, 360,
+                        Math.max(1, Math.round(height * (360f / width))), true);
+                output.reset();
+                smaller.compress(Bitmap.CompressFormat.JPEG, 55, output);
+                data = output.toByteArray();
+                smaller.recycle();
+            }
+            return data;
+        } finally {
+            if (compact != null && compact != cropped) compact.recycle();
+            if (cropped != null) cropped.recycle();
+            if (padded != null) padded.recycle();
         }
     }
 
