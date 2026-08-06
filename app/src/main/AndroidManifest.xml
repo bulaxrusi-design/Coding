@@ -38,6 +38,11 @@
         </activity>
 
         <activity
+            android:name=".UrsafeActivityV07"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
+
+        <activity
             android:name=".UrsafeActivity"
             android:exported="false"
             android:screenOrientation="unspecified" />
