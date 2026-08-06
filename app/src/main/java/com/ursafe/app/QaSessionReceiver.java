@@ -9,7 +9,7 @@ public final class QaSessionReceiver extends BroadcastReceiver {
 
     @Override public void onReceive(Context context, Intent intent) {
         if (intent == null || !ACTION_STOP.equals(intent.getAction())) return;
-        NumberMatchAgent.stop(context);
+        LiveControlSession.stop(context, "notification_stop");
         String result = QaSessionManager.stop(context, "notification_stop");
         BridgeNotifications.showMessage(context, "Ursafe QA დასრულდა", result, 6803);
     }
