@@ -39,8 +39,8 @@ public final class LauncherActivity extends Activity {
         value.setPadding(dp(20), dp(14), dp(20), dp(14));
 
         AlertDialog alert = new AlertDialog.Builder(this)
-                .setTitle("Ursafe Agent დაწყვილება")
-                .setMessage("ეს კოდი პირადია. გამომიგზავნე მხოლოდ ამ ჩატში, რათა ბრძანებები და შედეგები ბოლომდე დაშიფრული იყოს.")
+                .setTitle("Ursafe Live QA დაწყვილება")
+                .setMessage("ეს კოდი პირადია. ამ ჩატთან დაშიფრული screenshot და მოქმედებების არხის დასაწყვილებლად გამოიყენება.")
                 .setView(value)
                 .setCancelable(false)
                 .setNegativeButton("გაგრძელება", (dialog, which) -> {
@@ -59,14 +59,18 @@ public final class LauncherActivity extends Activity {
     }
 
     private void requestNotificationsThenContinue() {
-        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_NOTIFICATIONS);
+        if (Build.VERSION.SDK_INT >= 33
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    REQUEST_NOTIFICATIONS);
             return;
         }
         continueToApp();
     }
 
-    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+    @Override public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                                     int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == REQUEST_NOTIFICATIONS) continueToApp();
     }
@@ -75,11 +79,19 @@ public final class LauncherActivity extends Activity {
         if (continuing) return;
         continuing = true;
         try { BridgeForegroundService.start(this); }
-        catch (Exception error) { Toast.makeText(this, "Bridge ვერ გაეშვა: " + safe(error.getMessage()), Toast.LENGTH_LONG).show(); }
-        startActivity(new Intent(this, AgentActivityV08.class));
+        catch (Exception error) {
+            Toast.makeText(this, "Bridge ვერ გაეშვა: " + safe(error.getMessage()),
+                    Toast.LENGTH_LONG).show();
+        }
+        startActivity(new Intent(this, AgentActivityV12.class));
         finish();
     }
 
-    private int dp(int value) { return Math.round(value * getResources().getDisplayMetrics().density); }
-    private static String safe(String value) { return value == null ? "უცნობი შეცდომა" : value; }
+    private int dp(int value) {
+        return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static String safe(String value) {
+        return value == null ? "უცნობი შეცდომა" : value;
+    }
 }
