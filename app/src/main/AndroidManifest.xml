@@ -3,6 +3,9 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <queries>
@@ -24,22 +27,43 @@
         android:usesCleartextTraffic="false">
 
         <activity
-            android:name=".UrsafeActivity"
+            android:name=".LauncherActivity"
             android:exported="true"
-            android:screenOrientation="unspecified">
+            android:excludeFromRecents="true"
+            android:noHistory="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <service
-            android:name=".BridgeResultService"
-            android:exported="false" />
+        <activity
+            android:name=".UrsafeActivity"
+            android:exported="false"
+            android:screenOrientation="unspecified" />
 
         <activity
             android:name=".MainActivity"
             android:exported="false" />
+
+        <service
+            android:name=".BridgeForegroundService"
+            android:exported="false"
+            android:stopWithTask="false"
+            android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".BridgeActionReceiver"
+            android:exported="false" />
+
+        <service
+            android:name=".BridgeResultService"
+            android:exported="false" />
+
+        <service
+            android:name=".BridgeUploadResultService"
+            android:exported="false" />
+
         <service
             android:name=".CommandResultService"
             android:exported="false" />
