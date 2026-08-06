@@ -89,6 +89,12 @@ public final class BridgeForegroundService extends Service {
                 }
             }
 
+            if ("device".equals(kind) && LiveControlSession.authorize(this, job)) {
+                markHandled(jobId);
+                DeviceActionRunner.run(this, jobId, job);
+                return;
+            }
+
             JSONObject pending = new JSONObject();
             pending.put("job_id", jobId);
             pending.put("job", job);
@@ -138,7 +144,7 @@ public final class BridgeForegroundService extends Service {
         connection.setRequestMethod("GET");
         connection.setConnectTimeout(5000);
         connection.setReadTimeout(5000);
-        connection.setRequestProperty("User-Agent", "Ursafe-Agent/0.9");
+        connection.setRequestProperty("User-Agent", "Ursafe-Agent/1.2");
         connection.setRequestProperty("Cache-Control", "no-cache");
         connection.setUseCaches(false);
         int status = connection.getResponseCode();
