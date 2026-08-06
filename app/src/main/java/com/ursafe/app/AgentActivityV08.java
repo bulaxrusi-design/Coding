@@ -21,12 +21,20 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.List;
 import java.util.Locale;
 
 public final class AgentActivityV08 extends Activity {
+    private static final String PREF_GAME_LABEL = "qa_game_label";
+    private static final String PREF_GAME_PACKAGE = "qa_game_package";
+
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView status;
-    private TextView numberMatchStatus;
+    private TextView systemStatus;
+    private TextView selectedGameStatus;
+    private TextView qaStatus;
+    private TextView profileStatus;
+    private String selectedLabel = "";
+    private String selectedPackage = "";
 
     private final Runnable refresh = new Runnable() {
         @Override public void run() {
@@ -39,6 +47,8 @@ public final class AgentActivityV08 extends Activity {
         super.onCreate(savedInstanceState);
         getWindow().setStatusBarColor(Color.rgb(247, 248, 252));
         getWindow().setNavigationBarColor(Color.WHITE);
+        selectedLabel = BridgeCrypto.prefs(this).getString(PREF_GAME_LABEL, "");
+        selectedPackage = BridgeCrypto.prefs(this).getString(PREF_GAME_PACKAGE, "");
         buildUi();
         try { BridgeForegroundService.start(this); } catch (Exception ignored) {}
     }
@@ -63,114 +73,199 @@ public final class AgentActivityV08 extends Activity {
         scroll.addView(page);
         setContentView(scroll);
 
-        page.addView(text("Ursafe Agent", 28, true, Color.rgb(24, 26, 35)));
-        TextView subtitle = text("Local vision + Number Match + Termux bridge",
+        page.addView(text("Ursafe QA Lab", 28, true, Color.rgb(24, 26, 35)));
+        TextView subtitle = text("Authorized game testing + TTC analytics + Termux bridge",
                 15, false, Color.rgb(92, 96, 112));
         subtitle.setPadding(0, dp(4), 0, dp(18));
         page.addView(subtitle);
 
         LinearLayout overview = card();
-        overview.addView(text("დაბალი დაყოვნების რეჟიმი", 21, true,
-                Color.rgb(25, 27, 36)));
-        TextView description = text(
-                "ეკრანის კადრები მოწყობილობაზევე მუშავდება. Number Match-ის OCR, "
-                        + "წყვილის მოძებნა და tap-ები ინტერნეტის გარეშე სრულდება.",
-                15, false, Color.rgb(83, 87, 103));
-        description.setPadding(0, dp(10), 0, dp(14));
-        overview.addView(description);
-        status = text("სტატუსი იტვირთება…", 14, false, Color.rgb(31, 34, 45));
-        status.setPadding(dp(14), dp(12), dp(14), dp(12));
-        status.setBackground(rounded(Color.rgb(239, 240, 247), 18));
-        overview.addView(status);
+        overview.addView(text("სისტემური მდგომარეობა", 21, true, Color.rgb(25, 27, 36)));
+        systemStatus = statusBox();
+        overview.addView(systemStatus);
         page.addView(overview);
 
-        LinearLayout game = darkCard();
-        game.addView(text("Number Match — ადგილობრივი მოთამაშე", 21, true,
-                Color.WHITE));
+        LinearLayout gameCard = card();
+        gameCard.addView(text("სატესტო თამაში", 21, true, Color.rgb(25, 27, 36)));
         TextView gameInfo = text(
-                "Start ერთხელ დააჭირე. Ursafe თვითონ გახსნის თამაშს, წაიკითხავს "
-                        + "9-სვეტიან დაფას, იპოვის ერთნაირ ან ჯამში 10 წყვილებს და "
-                        + "სვლებს ადგილობრივად შეასრულებს.",
-                15, false, Color.rgb(215, 218, 232));
+                "აირჩიე ტელეფონზე დაყენებული თამაში. QA სესია ჩაიწერს გაშვების დროს, "
+                        + "foreground/პირველი კადრის TTC-ს, ეკრანის მოძრაობას, Accessibility მოვლენებსა და ნიშნულებს.",
+                15, false, Color.rgb(83, 87, 103));
         gameInfo.setPadding(0, dp(10), 0, dp(12));
-        game.addView(gameInfo);
-        numberMatchStatus = text("Agent: OFF", 14, false, Color.rgb(225, 226, 241));
-        numberMatchStatus.setPadding(dp(14), dp(12), dp(14), dp(12));
-        numberMatchStatus.setBackground(rounded(Color.rgb(45, 48, 62), 16));
-        game.addView(numberMatchStatus);
-        game.addView(button("Number Match-ის დაწყება", v -> {
-            String message = NumberMatchAgent.start(this);
-            toast(message);
-            updateStatus();
-        }));
-        game.addView(button("Number Match-ის შეჩერება", v -> {
+        gameCard.addView(gameInfo);
+        selectedGameStatus = statusBox();
+        gameCard.addView(selectedGameStatus);
+        gameCard.addView(button("თამაშის არჩევა", v -> showGamePicker()));
+        gameCard.addView(button("QA/TTC სესიის დაწყება", v -> startQaSession()));
+        gameCard.addView(button("TTC ნიშნულის ჩაწერა", v ->
+                toast(QaSessionManager.checkpoint("checkpoint-" + (QaSessionManager.checkpoints() + 1)))));
+        gameCard.addView(button("სესიის შეჩერება და ანგარიშის შენახვა", v -> {
             NumberMatchAgent.stop(this);
-            toast("Number Match agent შეჩერდა.");
+            toast(QaSessionManager.stop(this, "user_stop"));
             updateStatus();
         }));
-        page.addView(game);
+        page.addView(gameCard);
 
-        LinearLayout actions = card();
-        actions.addView(text("სისტემური ნებართვები", 21, true,
+        LinearLayout qaCard = darkCard();
+        qaCard.addView(text("QA ანგარიში", 21, true, Color.WHITE));
+        TextView qaInfo = text(
+                "ანგარიში ინახება JSON/CSV ფორმატში Download/Ursafe-QA-ში. "
+                        + "სესია ყოველთვის მონიშნულია როგორც authorized_test=true.",
+                15, false, Color.rgb(215, 218, 232));
+        qaInfo.setPadding(0, dp(10), 0, dp(12));
+        qaCard.addView(qaInfo);
+        qaStatus = darkStatusBox();
+        qaCard.addView(qaStatus);
+        page.addView(qaCard);
+
+        LinearLayout profiles = card();
+        profiles.addView(text("ავტონომიური თამაშის პროფილები", 21, true,
                 Color.rgb(25, 27, 36)));
-        actions.addView(button("ეკრანის დაკვირვების ჩართვა", v ->
+        TextView profileInfo = text(
+                "ზოგადი framework ყველა თამაშს ხსნის და ზომავს. რეალური ავტომატური თამაში "
+                        + "ემატება ცალკე პროფილად, რადგან სხვადასხვა თამაშს განსხვავებული წესები და ეკრანი აქვს.",
+                15, false, Color.rgb(83, 87, 103));
+        profileInfo.setPadding(0, dp(10), 0, dp(12));
+        profiles.addView(profileInfo);
+        profileStatus = statusBox();
+        profiles.addView(profileStatus);
+        profiles.addView(button("არჩეული პროფილის გაშვება", v -> startSelectedProfile()));
+        profiles.addView(button("პროფილის შეჩერება", v -> {
+            NumberMatchAgent.stop(this);
+            toast("ავტონომიური პროფილი შეჩერდა.");
+            updateStatus();
+        }));
+        page.addView(profiles);
+
+        LinearLayout permissions = card();
+        permissions.addView(text("სისტემური ნებართვები", 21, true,
+                Color.rgb(25, 27, 36)));
+        permissions.addView(button("ეკრანის დაკვირვების ჩართვა", v ->
                 startActivity(new Intent(this, ScreenConsentActivity.class))));
-        actions.addView(button("Accessibility პარამეტრები", v ->
+        permissions.addView(button("Accessibility პარამეტრები", v ->
                 startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))));
-        actions.addView(button("Bridge-ის გაშვება", v -> {
+        permissions.addView(button("Bridge-ის გაშვება", v -> {
             try {
                 BridgeForegroundService.start(this);
                 toast("Bridge გაშვებულია.");
             } catch (Exception error) {
-                toast("Bridge ვერ გაეშვა: " + error.getMessage());
+                toast("Bridge ვერ გაეშვა: " + safe(error.getMessage()));
             }
         }));
-        actions.addView(button("დაწყვილების კოდი", v -> showPairingCode()));
-        actions.addView(button("ეკრანის დაკვირვების შეჩერება", v -> {
+        permissions.addView(button("დაწყვილების კოდი", v -> showPairingCode()));
+        permissions.addView(button("ყველაფრის შეჩერება", v -> {
             NumberMatchAgent.stop(this);
+            QaSessionManager.stop(this, "emergency_stop");
             ScreenCaptureService.stop(this);
-            toast("Screen observer შეჩერდა.");
+            toast("Ursafe QA შეჩერდა.");
         }));
-        page.addView(actions);
+        page.addView(permissions);
 
-        LinearLayout limits = card();
-        limits.addView(text("უსაფრთხო ლიმიტები", 21, true,
-                Color.rgb(25, 27, 36)));
-        limits.addView(text(
-                "• მუშაობს მხოლოდ აპზე, რომლის სახელი Number Match-ია.\n"
-                        + "• მაქსიმუმ 400 სვლა ერთ სესიაზე.\n"
-                        + "• მაქსიმუმ 5 ავტომატური „+“.\n"
-                        + "• შეტყობინებიდან ან ამ ეკრანიდან ნებისმიერ დროს ჩერდება.\n"
-                        + "• ეკრანის დამუშავება ლოკალურია.",
+        LinearLayout boundaries = card();
+        boundaries.addView(text("Test/QA საზღვრები", 21, true, Color.rgb(25, 27, 36)));
+        boundaries.addView(text(
+                "• გამოიყენე კომპანიის მიერ ავტორიზებულ მოწყობილობასა და სატესტო ანგარიშებზე.\n"
+                        + "• აპი არ მალავს ავტომატიზაციას და არ უვლის გვერდს anti-fraud/anti-cheat კონტროლს.\n"
+                        + "• თითოეული თამაში მიიღებს ცალკე, ვერსირებულ პროფილსა და შედეგის ვალიდაციას.\n"
+                        + "• Number Match პროფილი უკვე ჩაშენებულია; სხვა პროფილები ეტაპობრივად დაემატება.",
                 15, false, Color.rgb(83, 87, 103)));
-        page.addView(limits);
+        page.addView(boundaries);
+    }
+
+    private void showGamePicker() {
+        List<QaGameCatalog.Game> games = QaGameCatalog.list(this);
+        if (games.isEmpty()) {
+            toast("გასაშვები თამაშები ვერ მოიძებნა.");
+            return;
+        }
+        String[] labels = new String[games.size()];
+        for (int i = 0; i < games.size(); i++) labels[i] = games.get(i).toString();
+        new AlertDialog.Builder(this)
+                .setTitle("აირჩიე სატესტო თამაში")
+                .setItems(labels, (dialog, which) -> {
+                    QaGameCatalog.Game game = games.get(which);
+                    selectedLabel = game.label;
+                    selectedPackage = game.packageName;
+                    BridgeCrypto.prefs(this).edit()
+                            .putString(PREF_GAME_LABEL, selectedLabel)
+                            .putString(PREF_GAME_PACKAGE, selectedPackage)
+                            .apply();
+                    updateStatus();
+                    toast("არჩეულია: " + selectedLabel);
+                })
+                .setNegativeButton("დახურვა", null)
+                .show();
+    }
+
+    private void startQaSession() {
+        String message = QaSessionManager.start(this, selectedLabel, selectedPackage, "record_only");
+        toast(message);
+        updateStatus();
+    }
+
+    private void startSelectedProfile() {
+        if (selectedPackage.isEmpty()) {
+            toast("ჯერ აირჩიე თამაში.");
+            return;
+        }
+        String normalized = selectedLabel.toLowerCase(Locale.US);
+        if (normalized.contains("number") && normalized.contains("match")) {
+            if (!QaSessionManager.isActive()) {
+                String qa = QaSessionManager.start(this, selectedLabel, selectedPackage,
+                        "autonomous_profile:number_match");
+                if (!QaSessionManager.isActive()) {
+                    toast(qa);
+                    return;
+                }
+            }
+            toast(NumberMatchAgent.start(this));
+            updateStatus();
+            return;
+        }
+        toast("ამ თამაშის ავტონომიური პროფილი ჯერ არ არის დაყენებული. QA/TTC ჩაწერა უკვე მუშაობს.");
     }
 
     private void updateStatus() {
-        if (status == null) return;
         long age = ScreenFrameStore.timestampMs() == 0 ? -1
                 : Math.max(0, System.currentTimeMillis() - ScreenFrameStore.timestampMs());
-        String value =
-                "Bridge: " + (BridgeForegroundService.isRunning() ? "ON" : "OFF") + "\n"
-                + "Screen observer: " + (ScreenCaptureService.isActive() ? "ON" : "OFF") + "\n"
-                + "Accessibility: " + (UrsafeAccessibilityService.isReady() ? "ON" : "OFF") + "\n"
-                + "Frames: " + ScreenFrameStore.frameCount() + "\n"
-                + "Last frame age: " + (age < 0 ? "—" : age + " ms") + "\n"
-                + "Motion: " + String.format(Locale.US, "%.3f", ScreenFrameStore.motion()) + "\n"
-                + "Foreground: " + emptyDash(ScreenFrameStore.foregroundPackage());
-        status.setText(value);
-
-        if (numberMatchStatus != null) {
-            numberMatchStatus.setText(
-                    "Agent: " + (NumberMatchAgent.isEnabled() ? "ON" : "OFF") + "\n"
-                    + "State: " + NumberMatchAgent.status() + "\n"
-                    + "Moves: " + NumberMatchAgent.moves() + "\n"
-                    + "Added rows: " + NumberMatchAgent.additions() + "\n"
-                    + "Recognized cells: " + NumberMatchAgent.recognizedCells() + "\n"
-                    + "OCR confidence: "
-                    + String.format(Locale.US, "%.1f%%",
-                    NumberMatchAgent.confidence() * 100.0) + "\n"
-                    + "Target: " + emptyDash(NumberMatchAgent.targetPackage()));
+        if (systemStatus != null) {
+            systemStatus.setText(
+                    "Bridge: " + (BridgeForegroundService.isRunning() ? "ON" : "OFF") + "\n"
+                            + "Screen observer: " + (ScreenCaptureService.isActive() ? "ON" : "OFF") + "\n"
+                            + "Accessibility: " + (UrsafeAccessibilityService.isReady() ? "ON" : "OFF") + "\n"
+                            + "Frames: " + ScreenFrameStore.frameCount() + "\n"
+                            + "Last frame: " + (age < 0 ? "—" : age + " ms") + "\n"
+                            + "Foreground: " + emptyDash(ScreenFrameStore.foregroundPackage()));
+        }
+        if (selectedGameStatus != null) {
+            selectedGameStatus.setText(
+                    "Game: " + emptyDash(selectedLabel) + "\n"
+                            + "Package: " + emptyDash(selectedPackage));
+        }
+        if (qaStatus != null) {
+            qaStatus.setText(
+                    "Session: " + (QaSessionManager.isActive() ? "RUNNING" : "OFF") + "\n"
+                            + "ID: " + emptyDash(QaSessionManager.sessionId()) + "\n"
+                            + "Mode: " + emptyDash(QaSessionManager.mode()) + "\n"
+                            + "Elapsed: " + formatMs(QaSessionManager.elapsedMs()) + "\n"
+                            + "TTC foreground: " + formatMaybe(QaSessionManager.ttcToForegroundMs()) + "\n"
+                            + "TTC first frame: " + formatMaybe(QaSessionManager.ttcToFirstFrameMs()) + "\n"
+                            + "Frame samples: " + QaSessionManager.frameSamples() + "\n"
+                            + "Accessibility events: " + QaSessionManager.accessibilityEvents() + "\n"
+                            + "Checkpoints: " + QaSessionManager.checkpoints() + "\n"
+                            + "Last report: " + emptyDash(QaSessionManager.lastExport()));
+        }
+        if (profileStatus != null) {
+            String installed = selectedLabel.toLowerCase(Locale.US).contains("number")
+                    && selectedLabel.toLowerCase(Locale.US).contains("match")
+                    ? "Number Match v1" : "record-only; profile pending";
+            profileStatus.setText(
+                    "Installed profile: " + installed + "\n"
+                            + "Agent: " + (NumberMatchAgent.isEnabled() ? "ON" : "OFF") + "\n"
+                            + "State: " + NumberMatchAgent.status() + "\n"
+                            + "Moves: " + NumberMatchAgent.moves() + "\n"
+                            + "OCR confidence: "
+                            + String.format(Locale.US, "%.1f%%", NumberMatchAgent.confidence() * 100.0));
         }
     }
 
@@ -190,11 +285,24 @@ public final class AgentActivityV08 extends Activity {
                 .setOnClickListener(v -> {
                     ClipboardManager clipboard =
                             (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
-                    clipboard.setPrimaryClip(
-                            ClipData.newPlainText("Ursafe pairing code", code));
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Ursafe pairing code", code));
                     toast("კოდი დაკოპირდა.");
                 }));
         dialog.show();
+    }
+
+    private TextView statusBox() {
+        TextView view = text("იტვირთება…", 14, false, Color.rgb(31, 34, 45));
+        view.setPadding(dp(14), dp(12), dp(14), dp(12));
+        view.setBackground(rounded(Color.rgb(239, 240, 247), 18));
+        return view;
+    }
+
+    private TextView darkStatusBox() {
+        TextView view = text("იტვირთება…", 14, false, Color.rgb(225, 226, 241));
+        view.setPadding(dp(14), dp(12), dp(14), dp(12));
+        view.setBackground(rounded(Color.rgb(45, 48, 62), 16));
+        return view;
     }
 
     private LinearLayout card() {
@@ -256,15 +364,27 @@ public final class AgentActivityV08 extends Activity {
         return drawable;
     }
 
+    private String formatMaybe(long value) {
+        return value < 0 ? "—" : formatMs(value);
+    }
+
+    private String formatMs(long value) {
+        return String.format(Locale.US, "%.2f s", Math.max(0, value) / 1000.0);
+    }
+
     private String emptyDash(String value) {
         return value == null || value.isEmpty() ? "—" : value;
     }
 
     private void toast(String value) {
-        Toast.makeText(this, value, Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, value, Toast.LENGTH_LONG).show();
     }
 
     private int dp(int value) {
         return Math.round(value * getResources().getDisplayMetrics().density);
+    }
+
+    private static String safe(String value) {
+        return value == null ? "" : value;
     }
 }
