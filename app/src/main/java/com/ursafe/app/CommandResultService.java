@@ -18,15 +18,19 @@ public final class CommandResultService extends IntentService {
         int requestId = intent.getIntExtra("request_id", -1);
         Bundle result = intent.getBundleExtra("result");
         String message;
+        String stdout = "";
+        String stderr = "";
+        int exitCode = -1;
+        int errorCode = 0;
 
         if (result == null) {
             message = "Termux პასუხი ვერ დამუშავდა.";
         } else {
-            String stdout = value(result.getString("stdout"));
-            String stderr = value(result.getString("stderr"));
+            stdout = value(result.getString("stdout"));
+            stderr = value(result.getString("stderr"));
             String errorMessage = value(result.getString("errmsg"));
-            int exitCode = result.getInt("exitCode", -1);
-            int errorCode = result.getInt("err", 0);
+            exitCode = result.getInt("exitCode", -1);
+            errorCode = result.getInt("err", 0);
 
             if (exitCode == 0 && errorCode == 0) {
                 message = stdout.trim().isEmpty()
@@ -36,7 +40,8 @@ public final class CommandResultService extends IntentService {
                 StringBuilder builder = new StringBuilder();
                 builder.append("Termux შეცდომა: exit=").append(exitCode);
                 if (!errorMessage.isEmpty()) builder.append("\n").append(errorMessage);
-                if (!stderr.isEmpty()) builder.append("\n").append(stderr);
+                if (!stderr.isEmpty()) builder.append("\n").append(stderr.trim());
+                if (!stdout.isEmpty()) builder.append("\nstdout:\n").append(stdout.trim());
                 message = builder.toString();
             }
         }
@@ -46,6 +51,10 @@ public final class CommandResultService extends IntentService {
         update.putExtra("request_id", requestId);
         update.putExtra("request_kind", requestKind);
         update.putExtra("message", message);
+        update.putExtra("stdout", stdout);
+        update.putExtra("stderr", stderr);
+        update.putExtra("exit_code", exitCode);
+        update.putExtra("error_code", errorCode);
         sendBroadcast(update);
     }
 
