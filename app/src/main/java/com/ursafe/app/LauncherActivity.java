@@ -37,7 +37,8 @@ public final class LauncherActivity extends Activity {
         value.setTextIsSelectable(true);
         value.setGravity(Gravity.CENTER_HORIZONTAL);
         value.setPadding(dp(20), dp(14), dp(20), dp(14));
-        new AlertDialog.Builder(this)
+
+        AlertDialog alert = new AlertDialog.Builder(this)
                 .setTitle("Ursafe Bridge დაწყვილება")
                 .setMessage("ეს კოდი პირადია. გამომიგზავნე მხოლოდ ამ ჩატში, რათა ბრძანებები და შედეგები ბოლომდე დაშიფრული იყოს.")
                 .setView(value)
@@ -47,15 +48,14 @@ public final class LauncherActivity extends Activity {
                     requestNotificationsThenContinue();
                 })
                 .setPositiveButton("კოპირება", null)
-                .setOnShowListener(dialog -> {
-                    AlertDialog alert = (AlertDialog) dialog;
-                    alert.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
-                        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                        clipboard.setPrimaryClip(ClipData.newPlainText("Ursafe pairing code", code));
-                        Toast.makeText(this, "დაწყვილების კოდი დაკოპირდა.", Toast.LENGTH_SHORT).show();
-                    });
-                })
-                .show();
+                .create();
+
+        alert.setOnShowListener(dialog -> alert.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            clipboard.setPrimaryClip(ClipData.newPlainText("Ursafe pairing code", code));
+            Toast.makeText(this, "დაწყვილების კოდი დაკოპირდა.", Toast.LENGTH_SHORT).show();
+        }));
+        alert.show();
     }
 
     private void requestNotificationsThenContinue() {
