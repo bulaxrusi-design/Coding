@@ -13,8 +13,12 @@ public final class CommandResultService extends IntentService {
     @Override
     protected void onHandleIntent(Intent intent) {
         if (intent == null) return;
+
+        String requestKind = value(intent.getStringExtra("request_kind"));
+        int requestId = intent.getIntExtra("request_id", -1);
         Bundle result = intent.getBundleExtra("result");
         String message;
+
         if (result == null) {
             message = "Termux პასუხი ვერ დამუშავდა.";
         } else {
@@ -39,6 +43,8 @@ public final class CommandResultService extends IntentService {
 
         Intent update = new Intent(MainActivity.ACTION_TERMUX_RESULT);
         update.setPackage(getPackageName());
+        update.putExtra("request_id", requestId);
+        update.putExtra("request_kind", requestKind);
         update.putExtra("message", message);
         sendBroadcast(update);
     }
