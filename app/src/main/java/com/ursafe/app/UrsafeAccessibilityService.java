@@ -16,9 +16,11 @@ public final class UrsafeAccessibilityService extends AccessibilityService {
     }
 
     @Override public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event != null && event.getPackageName() != null) {
-            ScreenFrameStore.setForegroundPackage(event.getPackageName().toString());
-        }
+        if (event == null) return;
+        String packageName = event.getPackageName() == null ? "" : event.getPackageName().toString();
+        if (!packageName.isEmpty()) ScreenFrameStore.setForegroundPackage(packageName);
+        String text = event.getText() == null ? "" : event.getText().toString();
+        QaSessionManager.onAccessibilityEvent(packageName, event.getEventType(), text);
     }
 
     @Override public void onInterrupt() {}
@@ -38,7 +40,9 @@ public final class UrsafeAccessibilityService extends AccessibilityService {
         GestureDescription.StrokeDescription stroke =
                 new GestureDescription.StrokeDescription(path, 0, Math.max(40, durationMs));
         GestureDescription gesture = new GestureDescription.Builder().addStroke(stroke).build();
-        return service.dispatchGesture(gesture, null, service.main);
+        boolean accepted = service.dispatchGesture(gesture, null, service.main);
+        if (accepted) QaSessionManager.recordAction("tap", x + "," + y + "," + durationMs);
+        return accepted;
     }
 
     public static boolean swipe(float fromX, float fromY, float toX, float toY, long durationMs) {
@@ -50,16 +54,23 @@ public final class UrsafeAccessibilityService extends AccessibilityService {
         GestureDescription.StrokeDescription stroke =
                 new GestureDescription.StrokeDescription(path, 0, Math.max(100, durationMs));
         GestureDescription gesture = new GestureDescription.Builder().addStroke(stroke).build();
-        return service.dispatchGesture(gesture, null, service.main);
+        boolean accepted = service.dispatchGesture(gesture, null, service.main);
+        if (accepted) QaSessionManager.recordAction("swipe",
+                fromX + "," + fromY + "->" + toX + "," + toY + "," + durationMs);
+        return accepted;
     }
 
     public static boolean back() {
         UrsafeAccessibilityService service = instance;
-        return service != null && service.performGlobalAction(GLOBAL_ACTION_BACK);
+        boolean ok = service != null && service.performGlobalAction(GLOBAL_ACTION_BACK);
+        if (ok) QaSessionManager.recordAction("back", "");
+        return ok;
     }
 
     public static boolean home() {
         UrsafeAccessibilityService service = instance;
-        return service != null && service.performGlobalAction(GLOBAL_ACTION_HOME);
+        boolean ok = service != null && service.performGlobalAction(GLOBAL_ACTION_HOME);
+        if (ok) QaSessionManager.recordAction("home", "");
+        return ok;
     }
 }
